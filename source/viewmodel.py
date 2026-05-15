@@ -468,6 +468,10 @@ class MainViewModel(QObject):
 
 
 
+    def _clear_add_worker_ref(self, worker):
+        if self.add_worker == worker:
+            self.add_worker = None
+
     def add_pdfs(self, file_paths: List[str]):
         if not file_paths: return
 
@@ -482,6 +486,7 @@ class MainViewModel(QObject):
         self.add_worker.progress.connect(self._on_pdf_load_progress)
         self.add_worker.load_finished.connect(self._on_pdf_load_finished)
         self.add_worker.finished.connect(self.add_worker.deleteLater)
+        self.add_worker.finished.connect(lambda w=self.add_worker: self._clear_add_worker_ref(w))
         
         self.status_message.emit(QCoreApplication.translate("MainViewModel", "Analyzing {0} file(s)...").format(len(file_paths)), 0)
         self.add_worker.start()
@@ -522,9 +527,6 @@ class MainViewModel(QObject):
             self.status_message.emit(QCoreApplication.translate("MainViewModel", "Selected PDF(s) already in list."), 3000)
             
         self.pdfs_added.emit(added, errors)
-        if self.add_worker:
-            self.add_worker.deleteLater()
-        self.add_worker = None
 
     def remove_pdfs_by_indices(self, indices: List[int]):
         # Sort indices in descending order so removal doesn't shift remaining targets

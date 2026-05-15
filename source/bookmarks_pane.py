@@ -1,6 +1,6 @@
 import os
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem, 
+    QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
     QAbstractItemView, QHeaderView, QMenu, QHBoxLayout, QLabel, QPushButton, QStyle, QStyledItemDelegate
 )
 from PySide6.QtCore import Qt, Signal
@@ -57,6 +57,17 @@ class BookmarksTreeWidget(QTreeWidget):
             return
         super().mouseReleaseEvent(event)
 
+    def dragMoveEvent(self, event):
+        target_item = self.itemAt(event.pos())
+        dragged_item = self.currentItem()
+        
+        # Prevent dropping in empty space
+        if target_item is None:
+            event.ignore()
+            return
+            
+        super().dragMoveEvent(event)
+
     def dropEvent(self, event):
         dragged_item = self.currentItem()
         target_item = self.itemAt(event.pos())
@@ -65,31 +76,27 @@ class BookmarksTreeWidget(QTreeWidget):
             return super().dropEvent(event)
             
         # Is it a root item (PDF)? We don't allow dragging PDFs here.
-        if dragged_item.parent() is None:
+        # However, we DO allow dragging if it's a BookmarkItem that somehow became top-level
+        from model import PDFDocument, BookmarkItem
+        data = dragged_item.data(0, Qt.ItemDataRole.UserRole)
+        if dragged_item.parent() is None and isinstance(data, PDFDocument):
             event.ignore()
             return
             
-        # We don't allow dropping at the absolute root level (outside any PDF)
+        # If dropping in empty space, ignore
         if target_item is None:
             event.ignore()
             return
-            
-        # Find target's root
-        target_root = target_item
-        while target_root and target_root.parent() is not None:
-            target_root = target_root.parent()
-            
-        # Find dragged's root
-        dragged_root = dragged_item.parent()
-        while dragged_root and dragged_root.parent() is not None:
-            dragged_root = dragged_root.parent()
-            
-        # If trying to drop into a different PDF's hierarchy, block it
-        if target_root and dragged_root and target_root != dragged_root:
-            event.ignore()
-            return
-            
+
         super().dropEvent(event)
+        
+        # Manually trigger sync because rowsMoved signal might not fire 
+        # reliably for internal moves in some Qt versions/platforms.
+        parent_pane = self.parent()
+        while parent_pane and not hasattr(parent_pane, "_sync_to_viewmodel"):
+            parent_pane = parent_pane.parent()
+        if parent_pane:
+            parent_pane._sync_to_viewmodel()
 
 class BookmarksPane(QWidget):
     closed = Signal()
@@ -161,6 +168,7 @@ class BookmarksPane(QWidget):
         self.tree.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tree.setAlternatingRowColors(True)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.layout.addWidget(self.tree)
         
         # Connect signals
@@ -168,8 +176,8 @@ class BookmarksPane(QWidget):
         self.tree.itemChanged.connect(self._on_item_changed)
         self.tree.model().rowsMoved.connect(self._sync_to_viewmodel)
         
-        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
+        self.tree.itemSelectionChanged.connect(self._on_selection_changed)
         
         self._is_populating = False
         self._populate_tree()
@@ -205,13 +213,16 @@ class BookmarksPane(QWidget):
         global_pos = self.tree.viewport().mapToGlobal(pos)
         
         if item:
-            if item.parent() is None:
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+            from model import PDFDocument, BookmarkItem
+            
+            if isinstance(data, PDFDocument):
                 # PDF Root Node
                 add_child_action = menu.addAction(self.tr("Add Bookmark"))
                 action = menu.exec(global_pos)
                 if action == add_child_action:
                     self._add_child(item)
-            else:
+            elif isinstance(data, BookmarkItem):
                 # Bookmark Node
                 add_action = menu.addAction(self.tr("Add Bookmark Below"))
                 add_child_action = menu.addAction(self.tr("Add Child Bookmark"))
@@ -238,8 +249,17 @@ class BookmarksPane(QWidget):
                 add_action = menu.addAction(self.tr("Add Bookmark to Last PDF"))
                 action = menu.exec(global_pos)
                 if action == add_action:
-                    last_pdf_item = self.tree.topLevelItem(self.tree.topLevelItemCount() - 1)
-                    self._add_child(last_pdf_item)
+                    # Find the last PDF root item
+                    last_pdf_item = None
+                    for i in range(self.tree.topLevelItemCount() - 1, -1, -1):
+                        it = self.tree.topLevelItem(i)
+                        from model import PDFDocument
+                        if isinstance(it.data(0, Qt.ItemDataRole.UserRole), PDFDocument):
+                            last_pdf_item = it
+                            break
+                    
+                    if last_pdf_item:
+                        self._add_child(last_pdf_item)
 
     def _populate_tree(self):
         self._is_populating = True
@@ -316,6 +336,32 @@ class BookmarksPane(QWidget):
                 
             item.setExpanded(True)
             
+        # Re-run italics/tooltip check for all items now that the tree is fully built
+        # This is necessary because nesting across PDFs depends on the relative positions 
+        # of items which might be processed in any order.
+        it = QTreeWidgetItemIterator(self.tree)
+        while it.value():
+            item = it.value()
+            bm = item.data(0, Qt.ItemDataRole.UserRole)
+            if isinstance(bm, BookmarkItem):
+                # Find the top-level PDF root this item is attached to
+                root_item = item
+                while root_item.parent():
+                    root_item = root_item.parent()
+                root_pdf = root_item.data(0, Qt.ItemDataRole.UserRole)
+                
+                if root_pdf != bm.source_pdf:
+                    italic_font = item.font(0)
+                    italic_font.setItalic(True)
+                    item.setFont(0, italic_font)
+                    item.setFont(1, italic_font)
+                    
+                    source_name = bm.source_pdf.name if bm.source_pdf else self.tr("Unknown")
+                    tooltip = self.tr("Source: {0}").format(source_name)
+                    item.setToolTip(0, tooltip)
+                    item.setToolTip(1, tooltip)
+            it += 1
+
         self._is_populating = False
 
     def _on_item_changed(self, item, column):
@@ -329,7 +375,7 @@ class BookmarksPane(QWidget):
             
         new_toc = []
         
-        def traverse(item, pdf, level):
+        def traverse(item, parent_pdf, level):
             title = item.text(0).strip() or self.tr("Untitled")
             
             try:
@@ -343,27 +389,101 @@ class BookmarksPane(QWidget):
                 bm.title = title
                 bm.page = page
                 bm.level = level
-                bm.source_pdf = pdf # Update just in case
+                # bm.source_pdf is preserved from the object itself
                 new_toc.append(bm)
+                current_pdf = bm.source_pdf
             else:
-                # Newly created item
-                bm = BookmarkItem(title=title, page=page, level=level, source_pdf=pdf)
+                # Newly created item inherits PDF from parent/ancestor
+                bm = BookmarkItem(title=title, page=page, level=level, source_pdf=parent_pdf)
                 item.setData(0, Qt.ItemDataRole.UserRole, bm)
                 new_toc.append(bm)
+                current_pdf = parent_pdf
+
+            # Apply Guest bookmark visualization (italics + tooltip)
+            # Find the top-level PDF root this item is attached to
+            top_root = item
+            while top_root.parent():
+                top_root = top_root.parent()
+            root_pdf = top_root.data(0, Qt.ItemDataRole.UserRole)
+            
+            if root_pdf != bm.source_pdf:
+                italic_font = item.font(0)
+                italic_font.setItalic(True)
+                item.setFont(0, italic_font)
+                item.setFont(1, italic_font)
+                
+                source_name = bm.source_pdf.name if bm.source_pdf else self.tr("Unknown")
+                tooltip = self.tr("Source: {0}").format(source_name)
+                item.setToolTip(0, tooltip)
+                item.setToolTip(1, tooltip)
+            else:
+                # Revert to normal if it's no longer a guest
+                normal_font = item.font(0)
+                normal_font.setItalic(False)
+                item.setFont(0, normal_font)
+                item.setFont(1, normal_font)
+                item.setToolTip(0, "")
+                item.setToolTip(1, "")
                 
             for i in range(item.childCount()):
-                traverse(item.child(i), pdf, level + 1)
+                traverse(item.child(i), current_pdf, level + 1)
                 
-        for i in range(self.tree.topLevelItemCount()):
+        current_container_pdf_root = None
+        from model import PDFDocument, BookmarkItem
+        
+        # We use a while loop because we might be modifying the top-level items (reparenting)
+        i = 0
+        while i < self.tree.topLevelItemCount():
             root_item = self.tree.topLevelItem(i)
-            pdf = root_item.data(0, Qt.ItemDataRole.UserRole)
-            for j in range(root_item.childCount()):
-                traverse(root_item.child(j), pdf, 1)
+            data = root_item.data(0, Qt.ItemDataRole.UserRole)
+            
+            if isinstance(data, PDFDocument):
+                current_container_pdf_root = root_item
+                for j in range(root_item.childCount()):
+                    traverse(root_item.child(j), data, 1)
+                i += 1
+            elif isinstance(data, BookmarkItem):
+                # Bookmark escaped to top level! Snap it into the nearest PDF.
+                target_pdf_root = current_container_pdf_root
+                if not target_pdf_root:
+                    # Find the first PDF root below us if none above
+                    for k in range(i + 1, self.tree.topLevelItemCount()):
+                        cand = self.tree.topLevelItem(k).data(0, Qt.ItemDataRole.UserRole)
+                        if isinstance(cand, PDFDocument):
+                            target_pdf_root = self.tree.topLevelItem(k)
+                            break
+                
+                if target_pdf_root:
+                    # Move it in the tree
+                    self.tree.invisibleRootItem().takeChild(i)
+                    if target_pdf_root == current_container_pdf_root:
+                        target_pdf_root.addChild(root_item)
+                    else:
+                        target_pdf_root.insertChild(0, root_item)
+                    # Don't increment i, as we removed the current item
+                    traverse(root_item, target_pdf_root.data(0, Qt.ItemDataRole.UserRole), 1)
+                else:
+                    # No PDF roots at all? Just process as is.
+                    traverse(root_item, data.source_pdf, 1)
+                    i += 1
             
         # Update viewmodel without triggering _populate_tree
         self.vm.global_toc_changed.disconnect(self._populate_tree)
         self.vm.global_toc = new_toc
         self.vm.global_toc_changed.connect(self._populate_tree)
+
+    def _on_selection_changed(self):
+        item = self.tree.currentItem()
+        if not item:
+            return
+            
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        from model import PDFDocument
+        if isinstance(data, PDFDocument):
+            self.vm.status_message.emit(self.tr("Source PDF: {0}").format(data.name), 3000)
+        elif isinstance(data, BookmarkItem):
+            source_name = data.source_pdf.name if data.source_pdf else self.tr("Unknown")
+            self.vm.status_message.emit(self.tr("Source PDF: {0}").format(source_name), 3000)
 
     def _delete_item(self, item):
         parent = item.parent()
@@ -435,7 +555,10 @@ class BookmarksPane(QWidget):
         self._sync_to_viewmodel()
         
     def _get_pdf_for_item(self, item):
-        root = item
-        while root and root.parent() is not None:
-            root = root.parent()
-        return root.data(0, Qt.ItemDataRole.UserRole)
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        from model import PDFDocument
+        if isinstance(data, PDFDocument):
+            return data
+        elif isinstance(data, BookmarkItem):
+            return data.source_pdf
+        return None
