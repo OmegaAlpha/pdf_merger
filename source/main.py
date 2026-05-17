@@ -34,10 +34,25 @@ def main():
         app = QApplication(sys.argv)
         
         from PySide6.QtWidgets import QStyleFactory
-        app.setStyle(QStyleFactory.create("Fusion")) # This fixes a lot of UI rendering issues by forcing Qt to use its own style engine instead of the OS default.
+        app.setStyle(QStyleFactory.create("Fusion"))
         
         tm = ThemeManager(app)
         tm.apply_theme()
+        
+        # Apply proxy style after theme to ensure it wraps the final style (including QSS)
+        from PySide6.QtWidgets import QProxyStyle, QStyle
+        class MnemonicStyle(QProxyStyle):
+            def styleHint(self, hint, option=None, widget=None, returnData=None):
+                # SH_MenuBar_AltKeyNavigation = 31, SH_UnderlineAccelerator = 43
+                try:
+                    h_val = int(hint)
+                    if h_val == 31 or h_val == 43:
+                        return 0
+                except (ValueError, TypeError):
+                    pass
+                return super().styleHint(hint, option, widget, returnData)
+        
+        app.setStyle(MnemonicStyle(app.style()))
         
         # Initialize Language
         lm = LanguageManager(app)

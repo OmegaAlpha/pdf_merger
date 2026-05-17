@@ -4,6 +4,7 @@ from datetime import datetime
 import fitz
 import json
 
+import copy
 from PySide6.QtCore import (
     QObject,
     QAbstractTableModel,
@@ -14,11 +15,31 @@ from PySide6.QtCore import (
     QSettings,
     QCoreApplication,
 )
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QImage, QUndoStack, QUndoCommand
 
-from model import PDFDocument, BookmarkItem
+from model import PDFDocument, BookmarkItem, ProjectState
 from engine import merge_pdfs_engine
 from project_manager import save_project, load_project, refresh_pdf_metadata, verify_all_pdf_metadata
+
+class ProjectStateCommand(QUndoCommand):
+    def __init__(self, vm, old_state: ProjectState, new_state: ProjectState, description_key: str, context: str = "MainViewModel"):
+        translated = QCoreApplication.translate(context, description_key)
+        super().__init__(translated)
+        self.vm = vm
+        self.old_state = old_state
+        self.new_state = new_state
+        self._first_redo = True
+        self.description_key = description_key
+        self.context = context
+
+    def undo(self):
+        self.vm._apply_state(self.old_state)
+
+    def redo(self):
+        if self._first_redo:
+            self._first_redo = False
+            return
+        self.vm._apply_state(self.new_state)
 
 class AddPDFWorker(QThread):
     progress = Signal(PDFDocument)
@@ -156,6 +177,9 @@ class PDFListViewModel(QAbstractTableModel):
         return ["application/x-qabstractitemmodeldatalist"]
 
     def mimeData(self, indexes):
+        self._old_state_for_drag = None
+        if hasattr(self, 'main_vm') and self.main_vm:
+            self._old_state_for_drag = self.main_vm.get_state()
         self.dragged_rows = sorted(list(set(index.row() for index in indexes)))
         return super().mimeData(indexes)
 
@@ -176,6 +200,8 @@ class PDFListViewModel(QAbstractTableModel):
         if not hasattr(self, 'dragged_rows') or not self.dragged_rows:
             return False
             
+        if hasattr(self, 'main_vm') and self.main_vm:
+            self.main_vm.sort_column = -1
         self.order_broken.emit()
         self.layoutAboutToBeChanged.emit()
         
@@ -191,6 +217,9 @@ class PDFListViewModel(QAbstractTableModel):
             
         for i, item in enumerate(moved_items):
             self.pdfs.insert(insert_row + i, item)
+            
+        if hasattr(self, 'main_vm') and self.main_vm and self._old_state_for_drag:
+            self.main_vm.commit_state("Reorder PDFs", self._old_state_for_drag, "PDFListViewModel")
             
         self.dragged_rows = []
         self.layoutChanged.emit()
@@ -250,11 +279,26 @@ class PDFListViewModel(QAbstractTableModel):
 
         return None
 
-    def sort(self, column, order=Qt.SortOrder.AscendingOrder):
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
+            return self.headers[section]
+        return None
+
+    def sort(self, column: int, order: Qt.SortOrder = Qt.SortOrder.AscendingOrder):
         if not self.pdfs:
             return
             
         self.layoutAboutToBeChanged.emit()
+        reverse = (order == Qt.SortOrder.DescendingOrder)
+        
+        old_state = None
+        if hasattr(self, 'main_vm') and self.main_vm:
+            old_state = self.main_vm.get_state()
+            self.main_vm.sort_column = column
+            self.main_vm.sort_order = order
+            self.main_vm.sort_state_changed.emit(column, order.value)
+
+        original_order = list(self.pdfs)
         
         def sort_key(pdf):
             if column == 0: return pdf.name.lower()
@@ -263,29 +307,15 @@ class PDFListViewModel(QAbstractTableModel):
             if column == 3: return pdf.pages
             return ""
 
-        reverse = (order == Qt.SortOrder.DescendingOrder)
         self.pdfs.sort(key=sort_key, reverse=reverse)
-        
-        self.layoutChanged.emit()
-
-    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
-        if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
-            return self.headers[section]
-        return None
-
-    def sort(self, column: int, order: Qt.SortOrder = Qt.SortOrder.AscendingOrder):
-        self.layoutAboutToBeChanged.emit()
-        reverse = (order == Qt.SortOrder.DescendingOrder)
-        
-        if column == 0:
-            self.pdfs.sort(key=lambda x: x.name.lower(), reverse=reverse)
-        elif column == 1:
-            self.pdfs.sort(key=lambda x: x.size_kb, reverse=reverse)
-        elif column == 2:
-            self.pdfs.sort(key=lambda x: x.modified_dt, reverse=reverse)
-        elif column == 3:
-            self.pdfs.sort(key=lambda x: x.pages, reverse=reverse)
             
+        if old_state:
+            # Commit state if the order changed OR if the sort indicator state changed
+            if (self.pdfs != original_order or 
+                old_state.sort_column != self.main_vm.sort_column or
+                old_state.sort_order != self.main_vm.sort_order.value):
+                self.main_vm.commit_state("Sort PDFs", old_state, "PDFListViewModel")
+
         self.layoutChanged.emit()
 
     def supportedDropActions(self):
@@ -312,6 +342,7 @@ class MainViewModel(QObject):
     thumbnail_started = Signal(int) # Now includes total pages
     pdfs_added = Signal(int, int) # added, errors
     global_toc_changed = Signal()
+    sort_state_changed = Signal(int, int) # column, order
 
     # Project signals
     project_loaded = Signal(str, str)   # project file path, output_name
@@ -322,6 +353,7 @@ class MainViewModel(QObject):
     def __init__(self):
         super().__init__()
         self.pdf_list_model = PDFListViewModel()
+        self.pdf_list_model.main_vm = self
         self.settings = QSettings("PDFMerger", "PDFMergerApp")
         self.output_dir = self.settings.value("output_dir", os.path.expanduser("~"), type=str)
         self.last_open_dir = self.settings.value("last_open_dir", os.path.expanduser("~"), type=str)
@@ -332,6 +364,10 @@ class MainViewModel(QObject):
         self._current_preview_file = None
         self._active_workers = [] # Track running threads to prevent crash on destruction
         self.global_toc: List[BookmarkItem] = []
+        self.undo_stack = QUndoStack(self)
+        
+        self.sort_column = -1
+        self.sort_order = Qt.SortOrder.AscendingOrder
         
         self.pdf_list_model.layoutChanged.connect(self._sync_global_toc_order)
         self.pdf_list_model.rowsMoved.connect(self._sync_global_toc_order)
@@ -351,6 +387,69 @@ class MainViewModel(QObject):
                 new_global_toc.append(bm)
                 
         self.global_toc = new_global_toc
+        self.global_toc_changed.emit()
+
+    # --- State Management for Undo/Redo ---
+
+    def get_state(self) -> ProjectState:
+        """Capture the current project state."""
+        # Deep copy ensures that we capture the state of objects at this point in time.
+        # ProjectState contains both pdfs and global_toc, so deepcopy maintains the
+        # source_pdf references between them.
+        return copy.deepcopy(ProjectState(
+            pdfs=self.pdf_list_model.pdfs,
+            global_toc=self.global_toc,
+            output_dir=self.output_dir,
+            output_name="", # We'll let the View manage the output name text field
+            sort_column=self.sort_column,
+            sort_order=self.sort_order.value
+        ))
+
+    def _apply_state(self, state: ProjectState):
+        """Restore a project state and notify the UI."""
+        # state is already a deep copy from get_state()
+        
+        # Restore PDF list
+        self.pdf_list_model.beginResetModel()
+        self.pdf_list_model.pdfs = state.pdfs
+        
+        # Restore Global TOC and other settings BEFORE ending reset
+        # This ensures side effects (like _sync_global_toc_order) use the restored data
+        self.global_toc = state.global_toc
+        self.output_dir = state.output_dir
+        
+        self.sort_column = state.sort_column
+        self.sort_order = Qt.SortOrder(state.sort_order)
+
+        self.pdf_list_model.endResetModel()
+        
+        # Cleanup thumbnail cache for files no longer in the list to free memory
+        current_paths = {p.file_path for p in self.pdf_list_model.pdfs}
+        self.thumbnail_cache = {path: cache for path, cache in self.thumbnail_cache.items() if path in current_paths}
+
+        # Check if current preview is still valid
+        if self._current_preview_file:
+            if self._current_preview_file not in current_paths:
+                self.request_thumbnails(None)
+
+        # Notify UI components
+        self.global_toc_changed.emit()
+        self.output_dir_changed.emit(self.output_dir)
+        self.sort_state_changed.emit(self.sort_column, self.sort_order.value)
+
+    def commit_state(self, description_key: str, old_state: ProjectState, context: str = "MainViewModel"):
+        """Push a state change to the undo stack."""
+        new_state = self.get_state()
+        if new_state == old_state:
+            return
+        self.undo_stack.push(ProjectStateCommand(self, old_state, new_state, description_key, context))
+
+    def update_global_toc(self, new_toc: List[BookmarkItem], description_key: str, old_state: ProjectState = None, context: str = "MainViewModel"):
+        """Update the global TOC with undo support."""
+        if old_state is None:
+            old_state = self.get_state()
+        self.global_toc = new_toc
+        self.commit_state(description_key, old_state, context)
         self.global_toc_changed.emit()
 
     def _safe_abandon_worker(self, worker):
@@ -410,8 +509,18 @@ class MainViewModel(QObject):
     def request_thumbnails(self, file_path: str):
         self._current_preview_file = file_path
         
+        if file_path is None:
+            if self.thumbnail_worker:
+                self._safe_abandon_worker(self.thumbnail_worker)
+                self.thumbnail_worker = None
+            self.thumbnail_started.emit(0)
+            return
+            
         pdf = next((p for p in self.pdf_list_model.pdfs if p.file_path == file_path), None)
         if not pdf or pdf.missing: 
+            if pdf and pdf.missing:
+                # If it's selected but missing, we should also clear the preview
+                self.thumbnail_started.emit(0)
             return
 
         # Stop previous worker if running
@@ -479,6 +588,9 @@ class MainViewModel(QObject):
             self._safe_abandon_worker(self.add_worker)
             self.add_worker = None
 
+        self._state_before_add = self.get_state()
+        self.sort_column = -1
+        self.sort_state_changed.emit(-1, Qt.SortOrder.AscendingOrder.value)
         existing_paths = {pdf.file_path for pdf in self.pdf_list_model.pdfs}
         
         # Move long-running file operations to a background thread
@@ -509,6 +621,7 @@ class MainViewModel(QObject):
                     self.global_toc.append(BookmarkItem(title=str(title), page=int(page), level=int(lvl), source_pdf=pdf))
         else:
             self.global_toc.append(BookmarkItem(title=os.path.splitext(pdf.name)[0], page=1, level=1, source_pdf=pdf))
+        
         self.global_toc_changed.emit()
         
         # If it's the first one, update output dir
@@ -526,24 +639,38 @@ class MainViewModel(QObject):
         else:
             self.status_message.emit(QCoreApplication.translate("MainViewModel", "Selected PDF(s) already in list."), 3000)
             
+        if added > 0 and hasattr(self, '_state_before_add'):
+            self.commit_state("Add PDF(s)", self._state_before_add)
+            del self._state_before_add
+            
         self.pdfs_added.emit(added, errors)
 
     def remove_pdfs_by_indices(self, indices: List[int]):
+        old_state = self.get_state()
+        self.sort_column = -1
+        self.sort_state_changed.emit(-1, Qt.SortOrder.AscendingOrder.value)
         # Sort indices in descending order so removal doesn't shift remaining targets
         sorted_indices = sorted(indices, reverse=True)
         removed_pdfs = []
+        removed_any_preview = False
         for r in sorted_indices:
             if 0 <= r < len(self.pdf_list_model.pdfs):
                 pdf = self.pdf_list_model.pdfs[r]
                 removed_pdfs.append(pdf)
+                if pdf.file_path == self._current_preview_file:
+                    removed_any_preview = True
                 if pdf.file_path in self.thumbnail_cache:
                     del self.thumbnail_cache[pdf.file_path]
                 self.pdf_list_model.beginRemoveRows(QModelIndex(), r, r)
                 del self.pdf_list_model.pdfs[r]
                 self.pdf_list_model.endRemoveRows()
         
+        if removed_any_preview:
+            self.request_thumbnails(None)
+            
         if removed_pdfs:
             self.global_toc = [bm for bm in self.global_toc if bm.source_pdf not in removed_pdfs]
+            self.commit_state("Remove PDF(s)", old_state)
             self.global_toc_changed.emit()
         
         self.status_message.emit(QCoreApplication.translate("MainViewModel", "Removed {0} PDF(s)").format(len(sorted_indices)), 3000)
@@ -562,14 +689,19 @@ class MainViewModel(QObject):
         if source_row < destination_child_row:
             insert_index -= count
             
+        old_state = self.get_state()
+        self.sort_column = -1
         self.pdf_list_model.pdfs = temp_list[:insert_index] + moved_items + temp_list[insert_index:]
+        self.commit_state("Move Row(s)", old_state)
         
         self.pdf_list_model.endMoveRows()
 
     def set_output_dir(self, directory: str):
-        if directory:
+        if directory and directory != self.output_dir:
+            old_state = self.get_state()
             self.output_dir = directory
             self.settings.setValue("output_dir", self.output_dir)
+            self.commit_state("Change Output Directory", old_state)
             self.output_dir_changed.emit(self.output_dir)
             self.status_message.emit(QCoreApplication.translate("MainViewModel", "Output directory: {0}").format(self.output_dir), 3000)
 
@@ -616,7 +748,9 @@ class MainViewModel(QObject):
         bottom_right = self.pdf_list_model.index(row, self.pdf_list_model.columnCount() - 1)
         self.pdf_list_model.dataChanged.emit(top_left, bottom_right)
 
+        old_state = self.get_state()
         self.pdf_refreshed.emit(row, changes)
+        self.commit_state("Refresh PDF Metadata", old_state)
 
         if changes:
             self.status_message.emit(QCoreApplication.translate("MainViewModel", "Updated: {0}").format('; '.join(changes)), 7000)
@@ -651,7 +785,9 @@ class MainViewModel(QObject):
         bottom_right = self.pdf_list_model.index(row, self.pdf_list_model.columnCount() - 1)
         self.pdf_list_model.dataChanged.emit(top_left, bottom_right)
 
+        old_state = self.get_state()
         self.pdf_refreshed.emit(row, changes)
+        self.commit_state("Relocate PDF", old_state)
         self.status_message.emit(QCoreApplication.translate("MainViewModel", "Relocated: {0}").format(pdf.name), 5000)
 
     # --- Project Save / Load ---
@@ -705,6 +841,12 @@ class MainViewModel(QObject):
             self.pdf_list_model.endInsertRows()
             
         self.global_toc = result.get("global_toc", [])
+        
+        # Reset sorting indicator
+        self.sort_column = -1
+        self.sort_order = Qt.SortOrder.AscendingOrder
+        self.sort_state_changed.emit(self.sort_column, self.sort_order.value)
+        
         self.global_toc_changed.emit()
 
         # Verify metadata of found files against live disk state
@@ -716,6 +858,10 @@ class MainViewModel(QObject):
 
         # Set output dir and name
         self.set_output_dir(result["output_dir"])
+
+        # Clear undo stack after setting output dir and any other initial setup
+        # to ensure that loading a project starts with a completely clean undo history.
+        self.undo_stack.clear()
 
         # Emit signals
         self.project_loaded.emit(project_path, result["output_name"])

@@ -56,6 +56,7 @@ call "%VENV_PYTHON%" -m nuitka ^
   --include-data-files=source/style_dark.qss=source/style_dark.qss ^
   --include-data-files=source/style_light.qss=source/style_light.qss ^
   --include-data-files=source/bookmark.svg=source/bookmark.svg ^
+  --include-data-files=source/bookmark_linked.svg=source/bookmark_linked.svg ^
   --output-dir=nuitka_build ^
   --output-filename=PDFMerger.exe ^
   source/main.py

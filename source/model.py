@@ -18,3 +18,12 @@ class BookmarkItem:
     page: int
     level: int
     source_pdf: PDFDocument
+
+@dataclass
+class ProjectState:
+    pdfs: List[PDFDocument]
+    global_toc: List[BookmarkItem]
+    output_dir: str
+    output_name: str
+    sort_column: int = -1
+    sort_order: int = 0 # 0 = Ascending, 1 = Descending

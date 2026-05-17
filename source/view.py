@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QMenu,
 )
 from PySide6.QtCore import Qt, QSize, QSettings, QTimer, QEvent
-from PySide6.QtGui import QIcon, QPixmap, QImage, QAction
+from PySide6.QtGui import QIcon, QPixmap, QImage, QAction, QKeySequence
 
 from viewmodel import MainViewModel
 from bookmarks_pane import BookmarksPane
@@ -70,10 +70,25 @@ class MainWindow(QMainWindow):
         
         if hasattr(self, 'file_menu'):
             self.file_menu.setTitle(self.tr("&File"))
-            self.open_project_action.setText(self.tr("Open Project..."))
-            self.save_project_action.setText(self.tr("Save Project"))
-            self.save_as_action.setText(self.tr("Save Project As..."))
-            self.settings_action.setText(self.tr("Settings..."))
+            self.open_project_action.setText(self.tr("&Open Project..."))
+            self.save_project_action.setText(self.tr("&Save Project"))
+            self.save_as_action.setText(self.tr("Save Project &As..."))
+            self.settings_action.setText(self.tr("&Settings..."))
+            
+        if hasattr(self, 'edit_menu'):
+            self.edit_menu.setTitle(self.tr("&Edit"))
+            # Update all commands currently on the undo stack with their translated descriptions
+            try:
+                from PySide6.QtCore import QCoreApplication
+                if self.vm and self.vm.undo_stack:
+                    stack = self.vm.undo_stack
+                    for idx in range(stack.count()):
+                        cmd = stack.command(idx)
+                        if hasattr(cmd, 'description_key') and hasattr(cmd, 'context'):
+                            cmd.setText(QCoreApplication.translate(cmd.context, cmd.description_key))
+            except Exception:
+                pass
+            self._update_undo_redo_text()
             
         if hasattr(self, 'empty_label'):
             self.empty_label.setText(self.tr("Drag and drop PDF files here\nor click 'Add PDFs' to begin"))
@@ -85,11 +100,11 @@ class MainWindow(QMainWindow):
             self.add_btn.setText(self.tr(" Add PDFs"))
             self.remove_btn.setText(self.tr(" Remove Selected"))
             
-            preview_visible = self.preview_pane.isVisible()
-            self.toggle_preview_btn.setText(self.tr(" Hide Preview") if preview_visible else self.tr(" Show Preview"))
+            preview_checked = self.toggle_preview_btn.isChecked()
+            self.toggle_preview_btn.setText(self.tr(" Hide Preview") if preview_checked else self.tr(" Show Preview"))
             
-            bookmarks_visible = self.bookmarks_pane.isVisible()
-            self.toggle_bookmarks_btn.setText(self.tr(" Hide Bookmarks") if bookmarks_visible else self.tr(" Show Bookmarks"))
+            bookmarks_checked = self.toggle_bookmarks_btn.isChecked()
+            self.toggle_bookmarks_btn.setText(self.tr(" Hide Bookmarks") if bookmarks_checked else self.tr(" Show Bookmarks"))
             
             self.bookmarks_pane.retranslateUi()
             self.merge_btn.setText(self.tr(" Merge PDFs"))
@@ -97,6 +112,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'output_label'):
             self.output_label.setText(self.tr("Output File:"))
             self.output_dir_btn.setText(self.tr(" Set Output Directory"))
+            self.output_dir_btn.setToolTip(self.tr("Current Output Dir:\n{0}").format(self.vm.output_dir))
 
         # Update table headers
         if hasattr(self, 'pdf_table'):
@@ -151,6 +167,53 @@ class MainWindow(QMainWindow):
         self.settings_action = QAction("", self)
         self.settings_action.triggered.connect(self.on_settings_open)
         self.file_menu.addAction(self.settings_action)
+
+        self._setup_edit_menu()
+
+    def _setup_edit_menu(self):
+        menubar = self.menuBar()
+        self.edit_menu = menubar.addMenu(self.tr("&Edit"))
+        
+        self.undo_action = QAction("", self)
+        self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self.undo_action.triggered.connect(self.vm.undo_stack.undo)
+        self.edit_menu.addAction(self.undo_action)
+        
+        self.redo_action = QAction("", self)
+        self.redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        self.redo_action.triggered.connect(self.vm.undo_stack.redo)
+        self.edit_menu.addAction(self.redo_action)
+        
+        self.vm.undo_stack.canUndoChanged.connect(self.undo_action.setEnabled)
+        self.vm.undo_stack.canRedoChanged.connect(self.redo_action.setEnabled)
+        self.vm.undo_stack.undoTextChanged.connect(self._update_undo_redo_text)
+        self.vm.undo_stack.redoTextChanged.connect(self._update_undo_redo_text)
+        
+        # Initial state
+        self.undo_action.setEnabled(self.vm.undo_stack.canUndo())
+        self.redo_action.setEnabled(self.vm.undo_stack.canRedo())
+        self._update_undo_redo_text()
+
+    def _update_undo_redo_text(self):
+        try:
+            # Safety check: if vm or undo_stack C++ object is deleted (shutdown)
+            if not self.vm or not self.vm.undo_stack:
+                return
+            
+            undo_cmd = self.vm.undo_stack.undoText()
+            if undo_cmd:
+                self.undo_action.setText(self.tr("&Undo {0}").format(undo_cmd))
+            else:
+                self.undo_action.setText(self.tr("&Undo"))
+                
+            redo_cmd = self.vm.undo_stack.redoText()
+            if redo_cmd:
+                self.redo_action.setText(self.tr("&Redo {0}").format(redo_cmd))
+            else:
+                self.redo_action.setText(self.tr("&Redo"))
+        except RuntimeError:
+            # Handle cases where libshiboken reports object already deleted
+            pass
 
     def _setup_ui(self):
         # Table view setup
@@ -262,6 +325,7 @@ class MainWindow(QMainWindow):
         header_state = settings.value("header_state")
         if header_state:
             self.pdf_table.horizontalHeader().restoreState(header_state)
+        self._clear_sort_indicator()
 
         # Buttons
         btn_layout = QHBoxLayout()
@@ -273,10 +337,12 @@ class MainWindow(QMainWindow):
         
         self.toggle_preview_btn = QPushButton("")
         self.toggle_preview_btn.setCheckable(True)
+        self.toggle_preview_btn.toggled.connect(self.on_toggle_preview)
         self.toggle_preview_btn.setChecked(preview_visible)
         
         self.toggle_bookmarks_btn = QPushButton("")
         self.toggle_bookmarks_btn.setCheckable(True)
+        self.toggle_bookmarks_btn.toggled.connect(self.on_toggle_bookmarks)
         self.toggle_bookmarks_btn.setChecked(bookmarks_visible)
         self.toggle_bookmarks_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
         
@@ -377,8 +443,6 @@ class MainWindow(QMainWindow):
         self.remove_btn.clicked.connect(self.on_remove_pdfs)
         self.merge_btn.clicked.connect(self.on_merge)
         self.output_dir_btn.clicked.connect(self.on_set_output_dir)
-        self.toggle_preview_btn.toggled.connect(self.on_toggle_preview)
-        self.toggle_bookmarks_btn.toggled.connect(self.on_toggle_bookmarks)
         
         self.pdf_table.selectionModel().selectionChanged.connect(self.on_table_selection_changed)
 
@@ -392,6 +456,7 @@ class MainWindow(QMainWindow):
         self.vm.thumbnail_batch_ready.connect(self.on_thumbnail_batch_ready)
         self.vm.thumbnail_cache_ready.connect(self.on_thumbnail_cache_ready)
         self.vm.pdfs_added.connect(self.on_pdfs_added_finished)
+        self.vm.sort_state_changed.connect(self._on_sort_state_changed)
 
         # Empty state bindings
         self.vm.pdf_list_model.rowsInserted.connect(self._on_rows_inserted)
@@ -406,8 +471,16 @@ class MainWindow(QMainWindow):
         self.vm.project_saved.connect(self._on_project_saved)
         self.vm.project_load_warning.connect(self._on_project_load_warning)
 
+    def _on_sort_state_changed(self, column: int, order: int):
+        header = self.pdf_table.horizontalHeader()
+        if column == -1:
+            header.setSortIndicatorShown(False)
+        else:
+            header.setSortIndicatorShown(True)
+            header.setSortIndicator(column, Qt.SortOrder(order))
+
     def _clear_sort_indicator(self):
-        self.pdf_table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self.pdf_table.horizontalHeader().setSortIndicatorShown(False)
 
     def _on_rows_inserted(self, parent, first, last):
         self._update_empty_state()
