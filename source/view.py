@@ -18,16 +18,157 @@ from PySide6.QtWidgets import (
     QStyle,
     QGridLayout,
     QSplitter,
+    QSplitterHandle,
     QListWidget,
     QListWidgetItem,
     QMenu,
 )
-from PySide6.QtCore import Qt, QSize, QSettings, QTimer, QEvent
-from PySide6.QtGui import QIcon, QPixmap, QImage, QAction, QKeySequence
+from PySide6.QtCore import Qt, QSize, QSettings, QTimer, QEvent, QRect
+from PySide6.QtGui import QIcon, QPixmap, QImage, QAction, QKeySequence, QShortcut, QPainter, QColor
 
 from viewmodel import MainViewModel
 from bookmarks_pane import BookmarksPane
 from settings_dialog import SettingsDialog
+
+
+class _SplitterOverlay(QWidget):
+    """
+    A solid-blue widget parented to the splitter's parent (not the splitter
+    itself — QSplitter would absorb it into its panel layout).  It is raised
+    above all siblings so it renders on top of the splitter panels, giving a
+    5-px visual expansion with zero extra layout gap.
+    Mouse events pass through it so dragging the 1-px handle still works.
+    """
+
+    ACCENT = QColor("#0078D4")
+
+    def __init__(self, parent: QWidget):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.hide()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.fillRect(self.rect(), self.ACCENT)
+        p.end()
+
+
+class ThinSplitterHandle(QSplitterHandle):
+    """
+    A 1-px splitter handle (handleWidth=1).  On hover/press it tells
+    ThinSplitter to show a 5-px blue overlay widget raised above the
+    adjacent panels — giving a visual expansion with no extra layout gap.
+    """
+
+    HANDLE_WIDTH    = 1   # pixels allocated between panels in the layout
+    HOVER_VIS_WIDTH = 5   # pixels wide the blue bar appears on hover
+    LINE_LIGHT      = QColor("#D1D1D1")
+    LINE_DARK       = QColor("#3E3E42")
+
+    def __init__(self, orientation, parent):
+        super().__init__(orientation, parent)
+        self._hovered = False
+        self._pressed = False
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        self.setMouseTracking(True)
+
+    # ------------------------------------------------------------------
+    # Overlay management
+    # ------------------------------------------------------------------
+
+    def _show_overlay(self):
+        sp = self.splitter()
+        if not isinstance(sp, ThinSplitter):
+            return
+        overlay = sp._get_overlay()
+        if overlay is None:
+            return
+
+        hr = self.geometry()   # handle rect in splitter's own coordinate space
+        extra = (self.HOVER_VIS_WIDTH - self.HANDLE_WIDTH) // 2   # = 2 px each side
+        if self.orientation() == Qt.Orientation.Horizontal:
+            local_rect = QRect(hr.x() - extra, hr.y(), self.HOVER_VIS_WIDTH, hr.height())
+        else:
+            local_rect = QRect(hr.x(), hr.y() - extra, hr.width(), self.HOVER_VIS_WIDTH)
+
+        # Convert from splitter's coordinate space → overlay's parent coordinate space
+        parent_widget = overlay.parentWidget()
+        tl = sp.mapTo(parent_widget, local_rect.topLeft())
+        overlay.setGeometry(QRect(tl.x(), tl.y(), local_rect.width(), local_rect.height()))
+        overlay.show()
+        overlay.raise_()
+
+    def _hide_overlay(self):
+        sp = self.splitter()
+        if isinstance(sp, ThinSplitter) and sp._overlay is not None:
+            sp._overlay.hide()
+
+    # ------------------------------------------------------------------
+    # Input events
+    # ------------------------------------------------------------------
+
+    def enterEvent(self, event):
+        self._hovered = True
+        self._show_overlay()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hovered = False
+        if not self._pressed:
+            self._hide_overlay()
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        self._pressed = True
+        self._show_overlay()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        # Let QSplitterHandle move the handle first, then reposition the overlay
+        super().mouseMoveEvent(event)
+        if self._pressed:
+            self._show_overlay()
+
+    def mouseReleaseEvent(self, event):
+        self._pressed = False
+        if not self._hovered:
+            self._hide_overlay()
+        super().mouseReleaseEvent(event)
+
+    # ------------------------------------------------------------------
+    # Paint — just the 1-px hairline; hover state is drawn by the overlay
+    # ------------------------------------------------------------------
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        bg = self.palette().window().color()
+        is_dark = bg.lightness() < 128
+        line_color = self.LINE_DARK if is_dark else self.LINE_LIGHT
+        painter.fillRect(self.rect(), line_color)
+        painter.end()
+
+
+class ThinSplitter(QSplitter):
+    """QSplitter with a 1-px hairline divider that expands to 5-px blue on hover."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Overlay is created lazily so it can be parented to self.parentWidget()
+        # rather than self — QSplitter would absorb any direct child into its
+        # panel layout and give it a full-panel-sized geometry.
+        self._overlay: "_SplitterOverlay | None" = None
+
+    def _get_overlay(self) -> "_SplitterOverlay | None":
+        if self._overlay is None:
+            parent = self.parentWidget()
+            if parent is None:
+                return None
+            self._overlay = _SplitterOverlay(parent)
+        return self._overlay
+
+    def createHandle(self):
+        return ThinSplitterHandle(self.orientation(), self)
+
 
 class MainWindow(QMainWindow):
     def __init__(self, viewmodel: MainViewModel, theme_manager=None, language_manager=None):
@@ -226,6 +367,7 @@ class MainWindow(QMainWindow):
         header.setSectionsClickable(True)
         
         self.pdf_table.setColumnWidth(2, 150)
+        self.pdf_table.verticalHeader().setVisible(False)
         
         self._is_resizing_header = False
         header.sectionResized.connect(self._on_section_resized)
@@ -245,14 +387,22 @@ class MainWindow(QMainWindow):
         self.pdf_table.setSortingEnabled(True)
         self._clear_sort_indicator()
 
+        self.delete_shortcut = QShortcut(QKeySequence(Qt.Key_Delete), self.pdf_table)
+        self.delete_shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
+        self.delete_shortcut.activated.connect(self.on_remove_pdfs)
+
         # Context menu
         self.pdf_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.pdf_table.customContextMenuRequested.connect(self._on_table_context_menu)
         
         # Table Container for Overlay
         table_container = QWidget()
+        table_container.setObjectName("tableContainer")
         table_layout = QGridLayout(table_container)
         table_layout.setContentsMargins(0, 0, 0, 0)
+        table_layout.setSpacing(0)
+        table_layout.setHorizontalSpacing(0)
+        table_layout.setVerticalSpacing(0)
         table_layout.addWidget(self.pdf_table, 0, 0)
         
         self.empty_label = QLabel("")
@@ -261,7 +411,8 @@ class MainWindow(QMainWindow):
         self.empty_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         table_layout.addWidget(self.empty_label, 0, 0, Qt.AlignmentFlag.AlignCenter)
         
-        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter = ThinSplitter(Qt.Orientation.Horizontal)
+        self.splitter.setHandleWidth(ThinSplitterHandle.HANDLE_WIDTH)
         self.layout.addWidget(self.splitter)
         
         self.bookmarks_pane = BookmarksPane(self.vm)
@@ -270,6 +421,7 @@ class MainWindow(QMainWindow):
         self.splitter.addWidget(table_container)
         
         self.preview_pane = QWidget()
+        self.preview_pane.setObjectName("previewPane")
         preview_layout = QVBoxLayout(self.preview_pane)
         preview_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -301,7 +453,7 @@ class MainWindow(QMainWindow):
         preview_layout.addWidget(self.preview_list)
         
         self.splitter.addWidget(self.preview_pane)
-        
+
         # Restore splitter state
         settings = QSettings("PDFMerger", "PDFMergerApp")
         splitter_state = settings.value("splitter_state_v2")
@@ -309,6 +461,8 @@ class MainWindow(QMainWindow):
             self.splitter.restoreState(splitter_state)
         else:
             self.splitter.setSizes([300, 500, 350])
+        # Keep handle width consistent after state restore
+        self.splitter.setHandleWidth(ThinSplitterHandle.HANDLE_WIDTH)
             
         preview_visible = settings.value("preview_visible", True, type=bool)
         self.preview_pane.setVisible(preview_visible)

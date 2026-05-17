@@ -141,24 +141,6 @@ class BookmarksPane(QWidget):
         self.tree.setIndentation(12)
         
         self.tree.setObjectName("bookmarksTree")
-        self.tree.setStyleSheet("""
-            #bookmarksTree {
-                font-size: 11px !important;
-                font-family: "Segoe UI Variable", "Segoe UI", "-apple-system", "BlinkMacSystemFont", "Roboto", "Helvetica Neue", sans-serif !important;
-            }
-            QTreeView::item { 
-                padding: 1px; 
-                min-height: 22px; 
-            }
-            QTreeView QLineEdit { 
-                padding: 0px; 
-                margin: 0px; 
-                border: 1px solid #0078D4;
-                background-color: palette(base);
-                font-size: 11px !important;
-                font-family: "Segoe UI Variable", "Segoe UI", "-apple-system", "BlinkMacSystemFont", "Roboto", "Helvetica Neue", sans-serif !important;
-            }
-        """)
         
         # Apply custom delegate for page column
         self.page_delegate = PageDelegate(self.tree)
@@ -167,7 +149,7 @@ class BookmarksPane(QWidget):
         # Drag and drop for reordering and reparenting
         self.tree.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.tree.setAlternatingRowColors(True)
+        self.tree.setAlternatingRowColors(False)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.layout.addWidget(self.tree)
         

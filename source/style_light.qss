@@ -9,6 +9,10 @@ QMainWindow, QWidget#central_widget, QDialog {
     background-color: #F3F3F3;
 }
 
+QWidget#tableContainer {
+    background-color: #FFFFFF;
+}
+
 /* ToolTip styling */
 QToolTip {
     background-color: #FFFFFF;
@@ -20,8 +24,10 @@ QToolTip {
 QTableView, QTreeView, QListView, QListWidget {
     background-color: #FFFFFF;
     alternate-background-color: #F9F9F9;
-    border: 1px solid #D1D1D1;
-    border-radius: 6px;
+    border: none;                  /* Change from 1px solid #D1D1D1 */
+    border-radius: 0px;            /* Change from 6px */
+    margin: 0px;
+    padding: 0px;
     gridline-color: #E1E1E1;
     selection-background-color: #0078D4;
     selection-color: white;
@@ -37,6 +43,17 @@ QListWidget::item:selected {
 QListWidget::item:hover:!selected {
     background-color: #E1E1E1;
     border-radius: 4px;
+}
+
+QTreeView::item:selected {
+    background-color: #0078D4;
+    color: white;
+    border-radius: 0px;
+}
+
+QTreeView::item:hover:!selected {
+    background-color: #E1E1E1;
+    border-radius: 0px;
 }
 
 
@@ -191,16 +208,18 @@ QLabel#emptyStateLabel {
     font-size: 18px;
 }
 
-/* Splitter */
+/* Splitter — visual rendering is handled by ThinSplitterHandle.paintEvent */
 QSplitter::handle {
     background-color: transparent;
-    width: 4px;
+    border: none;
 }
-QSplitter::handle:hover {
-    background-color: #D1D1D1;
+
+QSplitter::handle:horizontal {
+    width: 5px;
 }
-QSplitter::handle:pressed {
-    background-color: #0078D4;
+
+QSplitter::handle:vertical {
+    height: 5px;
 }
 
 /* Menubar */
@@ -284,5 +303,38 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
 
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     background: transparent;
+}
+
+/* Bookmarks Tree Specific Styles */
+QTreeView#bookmarksTree, BookmarksTreeWidget#bookmarksTree {
+    border: none;
+    font-size: 11px !important;
+    font-family: "Segoe UI Variable", "Segoe UI", "-apple-system", "BlinkMacSystemFont", "Roboto", "Helvetica Neue", sans-serif !important;
+}
+
+QTreeView#bookmarksTree::item, BookmarksTreeWidget#bookmarksTree::item { 
+    padding: 1px; 
+    min-height: 22px; 
+    border: none;
+}
+
+QTreeView#bookmarksTree::item:selected, BookmarksTreeWidget#bookmarksTree::item:selected {
+    background-color: #0078D4;
+    color: white;
+    border: none;
+}
+
+QTreeView#bookmarksTree::item:hover:!selected, BookmarksTreeWidget#bookmarksTree::item:hover:!selected {
+    background-color: #E1E1E1;
+    border: none;
+}
+
+QTreeView#bookmarksTree QLineEdit, BookmarksTreeWidget#bookmarksTree QLineEdit { 
+    padding: 0px; 
+    margin: 0px; 
+    border: 1px solid #0078D4;
+    background-color: #FFFFFF;
+    font-size: 11px !important;
+    font-family: "Segoe UI Variable", "Segoe UI", "-apple-system", "BlinkMacSystemFont", "Roboto", "Helvetica Neue", sans-serif !important;
 }
 
