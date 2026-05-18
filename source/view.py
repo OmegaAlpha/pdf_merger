@@ -85,10 +85,13 @@ class ThinSplitterHandle(QSplitterHandle):
             return
 
         hr = self.geometry()   # handle rect in splitter's own coordinate space
-        extra = (self.HOVER_VIS_WIDTH - self.HANDLE_WIDTH) // 2   # = 2 px each side
         if self.orientation() == Qt.Orientation.Horizontal:
+            actual_width = hr.width()
+            extra = (self.HOVER_VIS_WIDTH - actual_width) // 2
             local_rect = QRect(hr.x() - extra, hr.y(), self.HOVER_VIS_WIDTH, hr.height())
         else:
+            actual_height = hr.height()
+            extra = (self.HOVER_VIS_WIDTH - actual_height) // 2
             local_rect = QRect(hr.x(), hr.y() - extra, hr.width(), self.HOVER_VIS_WIDTH)
 
         # Convert from splitter's coordinate space → overlay's parent coordinate space
@@ -127,6 +130,16 @@ class ThinSplitterHandle(QSplitterHandle):
         # Let QSplitterHandle move the handle first, then reposition the overlay
         super().mouseMoveEvent(event)
         if self._pressed:
+            self._show_overlay()
+
+    def moveEvent(self, event):
+        super().moveEvent(event)
+        if self._pressed or self._hovered:
+            self._show_overlay()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._pressed or self._hovered:
             self._show_overlay()
 
     def mouseReleaseEvent(self, event):

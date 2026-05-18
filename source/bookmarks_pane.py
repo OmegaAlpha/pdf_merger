@@ -66,6 +66,33 @@ class BookmarksTreeWidget(QTreeWidget):
             event.ignore()
             return
             
+        # Prevent placing guest bookmarks directly under another PDF container root
+        if dragged_item:
+            from model import BookmarkItem, PDFDocument
+            indicator = self.dropIndicatorPosition()
+            proposed_parent_pdf = None
+            
+            if indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
+                target_data = target_item.data(0, Qt.ItemDataRole.UserRole)
+                if isinstance(target_data, PDFDocument):
+                    proposed_parent_pdf = target_data
+            elif indicator in (QAbstractItemView.DropIndicatorPosition.AboveItem, QAbstractItemView.DropIndicatorPosition.BelowItem):
+                target_parent = target_item.parent()
+                if target_parent:
+                    target_parent_data = target_parent.data(0, Qt.ItemDataRole.UserRole)
+                    if isinstance(target_parent_data, PDFDocument):
+                        proposed_parent_pdf = target_parent_data
+                else:
+                    # Dropping above/below a top-level PDF root (escaping to top level) - not allowed!
+                    event.ignore()
+                    return
+            
+            if proposed_parent_pdf is not None:
+                bm = dragged_item.data(0, Qt.ItemDataRole.UserRole)
+                if isinstance(bm, BookmarkItem) and bm.source_pdf != proposed_parent_pdf:
+                    event.ignore()
+                    return
+            
         super().dragMoveEvent(event)
 
     def dropEvent(self, event):
@@ -87,6 +114,31 @@ class BookmarksTreeWidget(QTreeWidget):
         if target_item is None:
             event.ignore()
             return
+
+        # Prevent placing guest bookmarks directly under another PDF container root
+        indicator = self.dropIndicatorPosition()
+        proposed_parent_pdf = None
+        
+        if indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
+            target_data = target_item.data(0, Qt.ItemDataRole.UserRole)
+            if isinstance(target_data, PDFDocument):
+                proposed_parent_pdf = target_data
+        elif indicator in (QAbstractItemView.DropIndicatorPosition.AboveItem, QAbstractItemView.DropIndicatorPosition.BelowItem):
+            target_parent = target_item.parent()
+            if target_parent:
+                target_parent_data = target_parent.data(0, Qt.ItemDataRole.UserRole)
+                if isinstance(target_parent_data, PDFDocument):
+                    proposed_parent_pdf = target_parent_data
+            else:
+                # Dropping above/below a top-level PDF root (escaping to top level) - not allowed!
+                event.ignore()
+                return
+        
+        if proposed_parent_pdf is not None:
+            bm = dragged_item.data(0, Qt.ItemDataRole.UserRole)
+            if isinstance(bm, BookmarkItem) and bm.source_pdf != proposed_parent_pdf:
+                event.ignore()
+                return
 
         super().dropEvent(event)
         
@@ -386,7 +438,9 @@ class BookmarksPane(QWidget):
                     bm.title = title
                     bm.page = page
                     bm.level = level
-                    # bm.source_pdf is preserved from the object itself
+                    if level == 1:
+                        # Top-level bookmarks must belong to the PDF container root they reside under
+                        bm.source_pdf = parent_pdf
                     new_toc.append(bm)
                     current_pdf = bm.source_pdf
                 else:
