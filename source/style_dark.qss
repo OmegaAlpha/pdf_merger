@@ -213,11 +213,11 @@ QSplitter::handle {
 }
 
 QSplitter::handle:horizontal {
-    width: 5px;
+    width: 1px;
 }
 
 QSplitter::handle:vertical {
-    height: 5px;
+    height: 1px;
 }
 
 /* Menubar */

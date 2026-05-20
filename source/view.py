@@ -33,31 +33,50 @@ from settings_dialog import SettingsDialog
 
 class _SplitterOverlay(QWidget):
     """
-    A solid-blue widget parented to the splitter's parent (not the splitter
-    itself — QSplitter would absorb it into its panel layout).  It is raised
-    above all siblings so it renders on top of the splitter panels, giving a
-    5-px visual expansion with zero extra layout gap.
-    Mouse events pass through it so dragging the 1-px handle still works.
+    An opaque overlay widget parented to the splitter's parent (as a sibling).
+    Sized exactly to the 5-px highlight bar — no transparency compositing needed.
     """
 
     ACCENT = QColor("#0078D4")
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAutoFillBackground(False)
+        self._last_geo = QRect()
         self.hide()
 
+    def place(self, x: int, y: int, w: int, h: int):
+        """Move/resize only when the geometry actually changed.
+        Forces synchronous repaint so the blue bar renders at the new
+        position within the same frame — no flash between move and paint.
+        """
+        geo = QRect(x, y, w, h)
+        if geo == self._last_geo:
+            return
+        old = self._last_geo
+        self._last_geo = geo
+        # Position-only change → cheaper move()
+        if old.size() == geo.size():
+            self.move(geo.topLeft())
+        else:
+            self.setGeometry(geo)
+        # Immediate synchronous paint at the new position
+        self.repaint()
+
     def paintEvent(self, event):
-        p = QPainter(self)
-        p.fillRect(self.rect(), self.ACCENT)
-        p.end()
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), self.ACCENT)
+        painter.end()
 
 
 class ThinSplitterHandle(QSplitterHandle):
     """
-    A 1-px splitter handle (handleWidth=1).  On hover/press it tells
-    ThinSplitter to show a 5-px blue overlay widget raised above the
-    adjacent panels — giving a visual expansion with no extra layout gap.
+    A 1-px splitter handle. On hover or press, it requests ThinSplitter
+    to show the sibling _SplitterOverlay directly on top of it, while drawing
+    itself completely transparent/invisible to avoid double-painting.
     """
 
     HANDLE_WIDTH    = 1   # pixels allocated between panels in the layout
@@ -72,87 +91,95 @@ class ThinSplitterHandle(QSplitterHandle):
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.setMouseTracking(True)
 
-    # ------------------------------------------------------------------
-    # Overlay management
-    # ------------------------------------------------------------------
+    def _request_overlay_update(self):
+        sp = self.splitter()
+        if isinstance(sp, ThinSplitter):
+            sp._update_overlay(self)
 
-    def _show_overlay(self):
+    def _show_overlay_now(self):
         sp = self.splitter()
         if not isinstance(sp, ThinSplitter):
             return
+
         overlay = sp._get_overlay()
         if overlay is None:
             return
 
         hr = self.geometry()   # handle rect in splitter's own coordinate space
+
+        # Map handle's position to the parent widget's coordinate space
+        parent = sp.parentWidget()
+        if parent is None:
+            return
+
+        pos = sp.mapTo(parent, hr.topLeft())
+
         if self.orientation() == Qt.Orientation.Horizontal:
             actual_width = hr.width()
             extra = (self.HOVER_VIS_WIDTH - actual_width) // 2
-            local_rect = QRect(hr.x() - extra, hr.y(), self.HOVER_VIS_WIDTH, hr.height())
+            overlay.place(pos.x() - extra, pos.y(), self.HOVER_VIS_WIDTH, hr.height())
         else:
             actual_height = hr.height()
             extra = (self.HOVER_VIS_WIDTH - actual_height) // 2
-            local_rect = QRect(hr.x(), hr.y() - extra, hr.width(), self.HOVER_VIS_WIDTH)
+            overlay.place(pos.x(), pos.y() - extra, hr.width(), self.HOVER_VIS_WIDTH)
 
-        # Convert from splitter's coordinate space → overlay's parent coordinate space
-        parent_widget = overlay.parentWidget()
-        tl = sp.mapTo(parent_widget, local_rect.topLeft())
-        overlay.setGeometry(QRect(tl.x(), tl.y(), local_rect.width(), local_rect.height()))
-        overlay.show()
-        overlay.raise_()
+        if not overlay.isVisible():
+            overlay.show()
+            overlay.raise_()
 
     def _hide_overlay(self):
         sp = self.splitter()
         if isinstance(sp, ThinSplitter) and sp._overlay is not None:
             sp._overlay.hide()
-
-    # ------------------------------------------------------------------
-    # Input events
-    # ------------------------------------------------------------------
+            sp._overlay._last_geo = QRect()  # reset cached geometry
 
     def enterEvent(self, event):
         self._hovered = True
-        self._show_overlay()
+        self.repaint()  # synchronously clear the hairline before overlay appears
+        self._request_overlay_update()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         self._hovered = False
         if not self._pressed:
             self._hide_overlay()
+        self.repaint()  # synchronously restore the hairline after overlay hides
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):
         self._pressed = True
-        self._show_overlay()
+        self.repaint()  # synchronously clear the hairline
+        self._request_overlay_update()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        # Let QSplitterHandle move the handle first, then reposition the overlay
+        # super() moves the handle → triggers moveEvent → overlay update.
+        # No need to call _request_overlay_update() again here.
         super().mouseMoveEvent(event)
-        if self._pressed:
-            self._show_overlay()
-
-    def moveEvent(self, event):
-        super().moveEvent(event)
-        if self._pressed or self._hovered:
-            self._show_overlay()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if self._pressed or self._hovered:
-            self._show_overlay()
 
     def mouseReleaseEvent(self, event):
         self._pressed = False
         if not self._hovered:
             self._hide_overlay()
+        else:
+            self._request_overlay_update()
+        self.repaint()  # synchronously restore or clear the hairline
         super().mouseReleaseEvent(event)
 
-    # ------------------------------------------------------------------
-    # Paint — just the 1-px hairline; hover state is drawn by the overlay
-    # ------------------------------------------------------------------
+    def moveEvent(self, event):
+        super().moveEvent(event)
+        if self._pressed or self._hovered:
+            self._request_overlay_update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._pressed or self._hovered:
+            self._request_overlay_update()
 
     def paintEvent(self, event):
+        if self._hovered or self._pressed:
+            # Draw nothing — the overlay paints the blue bar as a sibling widget.
+            return
         painter = QPainter(self)
         bg = self.palette().window().color()
         is_dark = bg.lightness() < 128
@@ -162,22 +189,28 @@ class ThinSplitterHandle(QSplitterHandle):
 
 
 class ThinSplitter(QSplitter):
-    """QSplitter with a 1-px hairline divider that expands to 5-px blue on hover."""
+    """
+    A QSplitter that displays a 1-px divider hairline, overlaying it with a 5-px blue bar
+    on hover/drag without reserving extra layout gap.
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Overlay is created lazily so it can be parented to self.parentWidget()
-        # rather than self — QSplitter would absorb any direct child into its
-        # panel layout and give it a full-panel-sized geometry.
         self._overlay: "_SplitterOverlay | None" = None
+        self.setHandleWidth(ThinSplitterHandle.HANDLE_WIDTH)
 
     def _get_overlay(self) -> "_SplitterOverlay | None":
-        if self._overlay is None:
-            parent = self.parentWidget()
-            if parent is None:
-                return None
+        parent = self.parentWidget()
+        if parent is None:
+            return None
+
+        if self._overlay is None or self._overlay.parentWidget() is not parent:
             self._overlay = _SplitterOverlay(parent)
+            self._overlay.raise_()
         return self._overlay
+
+    def _update_overlay(self, handle):
+        handle._show_overlay_now()
 
     def createHandle(self):
         return ThinSplitterHandle(self.orientation(), self)
@@ -375,6 +408,7 @@ class MainWindow(QMainWindow):
         self.pdf_table.setModel(self.vm.pdf_list_model)
         header = self.pdf_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Column 0 (Name) stretches natively in C++ to fill remaining space
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         header.setSectionsMovable(True)
         header.setSectionsClickable(True)
@@ -384,9 +418,6 @@ class MainWindow(QMainWindow):
         
         self._is_resizing_header = False
         header.sectionResized.connect(self._on_section_resized)
-        
-        self.pdf_table._original_resizeEvent = self.pdf_table.resizeEvent
-        self.pdf_table.resizeEvent = self._on_table_resize
 
         self.pdf_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         
@@ -492,6 +523,11 @@ class MainWindow(QMainWindow):
         header_state = settings.value("header_state")
         if header_state:
             self.pdf_table.horizontalHeader().restoreState(header_state)
+            # restoreState() resets all resize modes – re-apply so the Name
+            # column stretches and Pages stays fixed regardless of saved state.
+            header = self.pdf_table.horizontalHeader()
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         self._clear_sort_indicator()
 
         # Buttons
@@ -548,27 +584,7 @@ class MainWindow(QMainWindow):
         self.setStatusBar(QStatusBar(self))
         self.vm.set_output_dir(self.vm.output_dir)
 
-    def _on_table_resize(self, event):
-        self.pdf_table._original_resizeEvent(event)
-        
-        header = self.pdf_table.horizontalHeader()
-        if header.count() == 0:
-            return
-            
-        viewport_width = self.pdf_table.viewport().width()
-        
-        other_widths = 0
-        for i in range(header.count()):
-            if i != 0:
-                other_widths += header.sectionSize(i)
-                
-        new_width = viewport_width - other_widths
-        if new_width < header.minimumSectionSize():
-            new_width = header.minimumSectionSize()
-            
-        self._is_resizing_header = True
-        header.resizeSection(0, new_width)
-        self._is_resizing_header = False
+
 
     def _on_section_resized(self, logicalIndex, oldSize, newSize):
         if self._is_resizing_header:
