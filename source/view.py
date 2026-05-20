@@ -43,16 +43,12 @@ class _SplitterOverlay(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAutoFillBackground(False)
         self._last_geo = QRect()
         self.hide()
 
     def place(self, x: int, y: int, w: int, h: int):
-        """Move/resize only when the geometry actually changed.
-        Forces synchronous repaint so the blue bar renders at the new
-        position within the same frame — no flash between move and paint.
-        """
+        """Move/resize only when the geometry actually changed."""
         geo = QRect(x, y, w, h)
         if geo == self._last_geo:
             return
@@ -63,8 +59,6 @@ class _SplitterOverlay(QWidget):
             self.move(geo.topLeft())
         else:
             self.setGeometry(geo)
-        # Immediate synchronous paint at the new position
-        self.repaint()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -135,35 +129,35 @@ class ThinSplitterHandle(QSplitterHandle):
 
     def enterEvent(self, event):
         self._hovered = True
-        self.repaint()  # synchronously clear the hairline before overlay appears
+        self.update()
         self._request_overlay_update()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         self._hovered = False
+        self.update()
         if not self._pressed:
             self._hide_overlay()
-        self.repaint()  # synchronously restore the hairline after overlay hides
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):
         self._pressed = True
-        self.repaint()  # synchronously clear the hairline
+        self.update()
         self._request_overlay_update()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        # super() moves the handle → triggers moveEvent → overlay update.
-        # No need to call _request_overlay_update() again here.
         super().mouseMoveEvent(event)
+        if self._pressed:
+            self._request_overlay_update()
 
     def mouseReleaseEvent(self, event):
         self._pressed = False
+        self.update()
         if not self._hovered:
             self._hide_overlay()
         else:
             self._request_overlay_update()
-        self.repaint()  # synchronously restore or clear the hairline
         super().mouseReleaseEvent(event)
 
     def moveEvent(self, event):
@@ -523,11 +517,6 @@ class MainWindow(QMainWindow):
         header_state = settings.value("header_state")
         if header_state:
             self.pdf_table.horizontalHeader().restoreState(header_state)
-            # restoreState() resets all resize modes – re-apply so the Name
-            # column stretches and Pages stays fixed regardless of saved state.
-            header = self.pdf_table.horizontalHeader()
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         self._clear_sort_indicator()
 
         # Buttons
