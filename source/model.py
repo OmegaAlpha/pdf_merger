@@ -18,6 +18,7 @@ class BookmarkItem:
     page: int
     level: int
     source_pdf: PDFDocument
+    host_pdf: PDFDocument = None  # Which PDF's tree it's displayed under (None = same as source_pdf)
 
 @dataclass
 class ProjectState:

@@ -244,6 +244,9 @@ QMenu::item:selected {
     background-color: #0078D4;
     color: white;
 }
+QMenu::item:disabled {
+    color: #6D6D70;
+}
 
 QAbstractScrollArea::corner {
     background-color: #252526;
