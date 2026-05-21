@@ -43,6 +43,7 @@ class _SplitterOverlay(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAutoFillBackground(False)
         self._last_geo = QRect()
         self.hide()
@@ -517,6 +518,11 @@ class MainWindow(QMainWindow):
         header_state = settings.value("header_state")
         if header_state:
             self.pdf_table.horizontalHeader().restoreState(header_state)
+            # restoreState() resets all resize modes – re-apply so the Name
+            # column stretches and Pages stays fixed regardless of saved state.
+            header = self.pdf_table.horizontalHeader()
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         self._clear_sort_indicator()
 
         # Buttons
