@@ -210,6 +210,9 @@ class BookmarksTreeWidget(QTreeWidget):
                 pane._add_sibling(item)
                 event.accept()
                 return
+        
+        super().keyPressEvent(event)
+
 
 class BookmarksPane(QWidget):
     closed = Signal()

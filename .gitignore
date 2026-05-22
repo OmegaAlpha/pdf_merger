@@ -12,5 +12,12 @@ dist/
 main.build/
 main.dist/
 
+# Nuitka build files
+nuitka_build/
+
 # Testing and coverage
 .coverage
+.pytest_cache
+
+# IDE
+.vscode/
