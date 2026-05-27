@@ -11,17 +11,6 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import Qt, QCoreApplication
 import fitz # Used to preload shared libraries early if needed
 
-# For Windows, ensure High DPI awareness is set before QApplication is initialized
-if sys.platform == "win32":
-    try:
-        import ctypes
-        ctypes.windll.shcore.SetProcessDpiAwareness(1) # 1 = Process_System_DPI_Aware
-    except Exception:
-        try:
-            ctypes.windll.user32.SetProcessDPIAware()
-        except Exception:
-            pass
-
 from viewmodel import MainViewModel
 from view import MainWindow
 from theme_manager import ThemeManager
@@ -29,8 +18,6 @@ from language_manager import LanguageManager
 
 def main():
     try:
-        if hasattr(Qt.HighDpiScaleFactorRoundingPolicy, 'PassThrough'):
-            QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
         app = QApplication(sys.argv)
         
         from PySide6.QtWidgets import QStyleFactory

@@ -53,95 +53,233 @@ Dra og slipp elementer for å endre rekkefølgen.</translation>
 <context>
     <name>BookmarksPane</name>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="114"/>
-        <location filename="../source/bookmarks_pane.py" line="186"/>
+        <location filename="../source/bookmarks_pane.py" line="288"/>
+        <location filename="../source/bookmarks_pane.py" line="234"/>
         <source>Bookmarks</source>
         <translation>Bokmerker</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="132"/>
-        <location filename="../source/bookmarks_pane.py" line="187"/>
+        <location filename="../source/bookmarks_pane.py" line="289"/>
+        <location filename="../source/bookmarks_pane.py" line="252"/>
         <source>Title</source>
         <translation>Tittel</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="132"/>
-        <location filename="../source/bookmarks_pane.py" line="187"/>
+        <location filename="../source/bookmarks_pane.py" line="289"/>
+        <location filename="../source/bookmarks_pane.py" line="252"/>
         <source>Page</source>
         <translation>Side</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="221"/>
+        <location filename="../source/bookmarks_pane.py" line="304"/>
         <source>Add Bookmark</source>
         <translation>Legg til bokmerke</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="227"/>
+        <location filename="../source/bookmarks_pane.py" line="315"/>
         <source>Add Bookmark Below</source>
         <translation>Legg til bokmerke under</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="228"/>
+        <location filename="../source/bookmarks_pane.py" line="316"/>
         <source>Add Child Bookmark</source>
         <translation>Legg til underordnet bokmerke</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="230"/>
+        <location filename="../source/bookmarks_pane.py" line="319"/>
         <source>Promote (Shift+Tab)</source>
         <translation>Forfrem (Shift+Tab)</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="231"/>
+        <location filename="../source/bookmarks_pane.py" line="320"/>
         <source>Demote (Tab)</source>
         <translation>Degrader (Tab)</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="233"/>
+        <location filename="../source/bookmarks_pane.py" line="322"/>
         <source>Remove</source>
         <translation>Fjern</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="249"/>
+        <location filename="../source/bookmarks_pane.py" line="384"/>
         <source>Add Bookmark to Last PDF</source>
         <translation>Legg til bokmerke i siste PDF</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="361"/>
-        <location filename="../source/bookmarks_pane.py" line="430"/>
-        <location filename="../source/bookmarks_pane.py" line="519"/>
+        <location filename="../source/bookmarks_pane.py" line="668"/>
+        <location filename="../source/bookmarks_pane.py" line="565"/>
+        <location filename="../source/bookmarks_pane.py" line="496"/>
         <source>Unknown</source>
         <translation>Ukjent</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="362"/>
-        <location filename="../source/bookmarks_pane.py" line="431"/>
+        <location filename="../source/bookmarks_pane.py" line="566"/>
+        <location filename="../source/bookmarks_pane.py" line="497"/>
         <source>Source: {0}</source>
         <translation>Kilde: {0}</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="394"/>
+        <location filename="../source/bookmarks_pane.py" line="529"/>
         <source>Untitled</source>
         <translation>Uten tittel</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="502"/>
+        <location filename="../source/bookmarks_pane.py" line="638"/>
         <source>Edit Bookmarks</source>
         <translation>Rediger bokmerker</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="517"/>
-        <location filename="../source/bookmarks_pane.py" line="520"/>
+        <location filename="../source/bookmarks_pane.py" line="669"/>
+        <location filename="../source/bookmarks_pane.py" line="666"/>
         <source>Source PDF: {0}</source>
         <translation>Kilde-PDF: {0}</translation>
     </message>
     <message>
-        <location filename="../source/bookmarks_pane.py" line="555"/>
+        <location filename="../source/bookmarks_pane.py" line="683"/>
+        <source>Delete Bookmark</source>
+        <translation>Slett bokmerke</translation>
+    </message>
+    <message>
+        <location filename="../source/bookmarks_pane.py" line="683"/>
+        <source>Delete Bookmarks</source>
+        <translation>Slett bokmerker</translation>
+    </message>
+    <message>
+        <location filename="../source/bookmarks_pane.py" line="751"/>
+        <source>Demote Bookmarks</source>
+        <translation>Rykk inn bokmerker</translation>
+    </message>
+    <message>
+        <location filename="../source/bookmarks_pane.py" line="807"/>
+        <source>Promote Bookmarks</source>
+        <translation>Rykk ut bokmerker</translation>
+    </message>
+    <message>
+        <location filename="../source/bookmarks_pane.py" line="851"/>
+        <source>Move Bookmarks Up</source>
+        <translation>Flytt bokmerker opp</translation>
+    </message>
+    <message>
+        <location filename="../source/bookmarks_pane.py" line="894"/>
+        <source>Move Bookmarks Down</source>
+        <translation>Flytt bokmerker ned</translation>
+    </message>
+    <message>
+        <location filename="../source/bookmarks_pane.py" line="920"/>
         <source>New Bookmark</source>
         <translation>Nytt bokmerke</translation>
     </message>
 </context>
 <context>
     <name>MainViewModel</name>
+    <message>
+        <location filename="../source/viewmodel.py" line="603"/>
+        <source>Analyzing {0} file(s)...</source>
+        <translation>Analyserer {0} fil(er) …</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="633"/>
+        <source>Added {0} PDF(s).</source>
+        <translation>La til {0} PDF(-er).</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="635"/>
+        <source>{0} error(s).</source>
+        <translation>{0} feil.</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="638"/>
+        <source>Failed to add files. {0} error(s).</source>
+        <translation>Kunne ikke legge til filer. {0} feil.</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="640"/>
+        <source>Selected PDF(s) already in list.</source>
+        <translation>Valgte PDF(-er) er allerede i listen.</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="676"/>
+        <source>Removed {0} PDF(s)</source>
+        <translation>Fjernet {0} PDF(-er)</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="706"/>
+        <source>Output directory: {0}</source>
+        <translation>Utdatamappe: {0}</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="710"/>
+        <source>No PDFs loaded.</source>
+        <translation>Ingen PDF-er lastet inn.</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="719"/>
+        <source>Merging started in background...</source>
+        <translation>Sammenslåing startet i bakgrunnen …</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="756"/>
+        <source>Updated: {0}</source>
+        <translation>Oppdatert: {0}</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="758"/>
+        <source>{0}: no changes detected.</source>
+        <translation>{0}: ingen endringer oppdaget.</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="791"/>
+        <source>Relocated: {0}</source>
+        <translation>Flyttet: {0}</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="810"/>
+        <source>Project saved: {0}</source>
+        <translation>Prosjekt lagret: {0}</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="812"/>
+        <source>Error saving project: {0}</source>
+        <translation>Feil ved lagring av prosjekt: {0}</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="819"/>
+        <source>Error loading project: {0}</source>
+        <translation>Feil ved lasting av prosjekt: {0}</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="874"/>
+        <source>The following files could not be found:
+</source>
+        <translation>Følgende filer ble ikke funnet:
+</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="876"/>
+        <source>
+
+They are shown in the list but cannot be merged until relocated or removed.</source>
+        <translation>
+
+De vises i listen, men kan ikke slås sammen før de er flyttet eller fjernet.</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="880"/>
+        <source>The following files have changed since the project was saved:
+</source>
+        <translation>Følgende filer har endret seg siden prosjektet ble lagret:
+</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="887"/>
+        <source>Project loaded with {0} missing, {1} changed file(s).</source>
+        <translation>Prosjekt lastet med {0} manglende, {1} endrede fil(er).</translation>
+    </message>
+    <message>
+        <location filename="../source/viewmodel.py" line="891"/>
+        <source>Project loaded: {0}</source>
+        <translation>Prosjekt lastet: {0}</translation>
+    </message>
     <message>
         <source>Reading bookmarks for {0}...</source>
         <translation type="vanished">Leser bokmerker for {0} …</translation>
@@ -151,339 +289,225 @@ Dra og slipp elementer for å endre rekkefølgen.</translation>
         <translation type="vanished">Bokmerker lastet inn.</translation>
     </message>
     <message>
-        <location filename="../source/viewmodel.py" line="600"/>
-        <source>Analyzing {0} file(s)...</source>
-        <translation>Analyserer {0} fil(er) …</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="630"/>
-        <source>Added {0} PDF(s).</source>
-        <translation>La til {0} PDF(-er).</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="632"/>
-        <source>{0} error(s).</source>
-        <translation>{0} feil.</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="635"/>
-        <source>Failed to add files. {0} error(s).</source>
-        <translation>Kunne ikke legge til filer. {0} feil.</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="637"/>
-        <source>Selected PDF(s) already in list.</source>
-        <translation>Valgte PDF(-er) er allerede i listen.</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="640"/>
         <source>Add PDF(s)</source>
-        <translation>Legg til PDF(-er)</translation>
+        <translation type="vanished">Legg til PDF(-er)</translation>
     </message>
     <message>
-        <location filename="../source/viewmodel.py" line="670"/>
         <source>Remove PDF(s)</source>
-        <translation>Fjern PDF(-er)</translation>
+        <translation type="vanished">Fjern PDF(-er)</translation>
     </message>
     <message>
-        <location filename="../source/viewmodel.py" line="673"/>
-        <source>Removed {0} PDF(s)</source>
-        <translation>Fjernet {0} PDF(-er)</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="692"/>
         <source>Move Row(s)</source>
-        <translation>Flytt rad(er)</translation>
+        <translation type="vanished">Flytt rad(er)</translation>
     </message>
     <message>
-        <location filename="../source/viewmodel.py" line="701"/>
         <source>Change Output Directory</source>
-        <translation>Endre utdatamappe</translation>
+        <translation type="vanished">Endre utdatamappe</translation>
     </message>
     <message>
-        <location filename="../source/viewmodel.py" line="703"/>
-        <source>Output directory: {0}</source>
-        <translation>Utdatamappe: {0}</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="707"/>
-        <source>No PDFs loaded.</source>
-        <translation>Ingen PDF-er lastet inn.</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="716"/>
-        <source>Merging started in background...</source>
-        <translation>Sammenslåing startet i bakgrunnen …</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="750"/>
         <source>Refresh PDF Metadata</source>
-        <translation>Oppdater PDF-metadata</translation>
+        <translation type="vanished">Oppdater PDF-metadata</translation>
     </message>
     <message>
-        <location filename="../source/viewmodel.py" line="753"/>
-        <source>Updated: {0}</source>
-        <translation>Oppdatert: {0}</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="755"/>
-        <source>{0}: no changes detected.</source>
-        <translation>{0}: ingen endringer oppdaget.</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="787"/>
         <source>Relocate PDF</source>
-        <translation>Flytt/bytt PDF</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="788"/>
-        <source>Relocated: {0}</source>
-        <translation>Flyttet: {0}</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="807"/>
-        <source>Project saved: {0}</source>
-        <translation>Prosjekt lagret: {0}</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="809"/>
-        <source>Error saving project: {0}</source>
-        <translation>Feil ved lagring av prosjekt: {0}</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="816"/>
-        <source>Error loading project: {0}</source>
-        <translation>Feil ved lasting av prosjekt: {0}</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="868"/>
-        <source>The following files could not be found:
-</source>
-        <translation>Følgende filer ble ikke funnet:
-</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="870"/>
-        <source>
-
-They are shown in the list but cannot be merged until relocated or removed.</source>
-        <translation>
-
-De vises i listen, men kan ikke slås sammen før de er flyttet eller fjernet.</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="874"/>
-        <source>The following files have changed since the project was saved:
-</source>
-        <translation>Følgende filer har endret seg siden prosjektet ble lagret:
-</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="881"/>
-        <source>Project loaded with {0} missing, {1} changed file(s).</source>
-        <translation>Prosjekt lastet med {0} manglende, {1} endrede fil(er).</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="885"/>
-        <source>Project loaded: {0}</source>
-        <translation>Prosjekt lastet: {0}</translation>
+        <translation type="vanished">Flytt/bytt PDF</translation>
     </message>
 </context>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../source/view.py" line="72"/>
+        <location filename="../source/view.py" line="254"/>
         <source>&amp;File</source>
         <translation>&amp;Fil</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="73"/>
+        <location filename="../source/view.py" line="255"/>
         <source>&amp;Open Project...</source>
         <translation>&amp;Åpne prosjekt …</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="74"/>
+        <location filename="../source/view.py" line="256"/>
         <source>&amp;Save Project</source>
         <translation>&amp;Lagre prosjekt</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="75"/>
+        <location filename="../source/view.py" line="257"/>
         <source>Save Project &amp;As...</source>
         <translation>Lagre prosjekt &amp;som …</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="76"/>
+        <location filename="../source/view.py" line="258"/>
         <source>&amp;Settings...</source>
         <translation>&amp;Innstillinger …</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="83"/>
+        <location filename="../source/view.py" line="357"/>
+        <location filename="../source/view.py" line="261"/>
+        <source>&amp;Edit</source>
+        <translation>&amp;Rediger</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="276"/>
         <source>Drag and drop PDF files here
 or click &apos;Add PDFs&apos; to begin</source>
         <translation>Dra og slipp PDF-filer her
 eller klikk «Legg til PDF-er» for å begynne</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="86"/>
+        <location filename="../source/view.py" line="279"/>
         <source>Page Previews</source>
         <translation>Sideforhåndsvisninger</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="89"/>
+        <location filename="../source/view.py" line="282"/>
         <source> Add PDFs</source>
         <translation> Legg til PDF-er</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="90"/>
+        <location filename="../source/view.py" line="283"/>
         <source> Remove Selected</source>
         <translation> Fjern valgte</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="93"/>
-        <location filename="../source/view.py" line="714"/>
+        <location filename="../source/view.py" line="904"/>
+        <location filename="../source/view.py" line="286"/>
         <source> Hide Preview</source>
         <translation> Skjul forhåndsvisning</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="93"/>
-        <location filename="../source/view.py" line="714"/>
+        <location filename="../source/view.py" line="904"/>
+        <location filename="../source/view.py" line="286"/>
         <source> Show Preview</source>
         <translation> Vis forhåndsvisning</translation>
     </message>
     <message>
-        <source> Edit Bookmarks</source>
-        <translation type="vanished"> Rediger bokmerker</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="99"/>
-        <source> Merge PDFs</source>
-        <translation> Slå sammen PDF-er</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="195"/>
-        <source>&amp;Undo</source>
-        <translation>&amp;Angre</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="193"/>
-        <source>&amp;Undo {0}</source>
-        <translation>&amp;Angre {0}</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="201"/>
-        <source>&amp;Redo</source>
-        <translation>&amp;Gjør om</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="199"/>
-        <source>&amp;Redo {0}</source>
-        <translation>&amp;Gjør om {0}</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="79"/>
-        <location filename="../source/view.py" line="163"/>
-        <source>&amp;Edit</source>
-        <translation>&amp;Rediger</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="102"/>
-        <source>Output File:</source>
-        <translation>Utdatafil:</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="103"/>
-        <source> Set Output Directory</source>
-        <translation> Velg utdatamappe</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="109"/>
-        <source>Name</source>
-        <translation>Navn</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="110"/>
-        <source>Size (KB)</source>
-        <translation>Størrelse (KB)</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="111"/>
-        <source>Modified Date</source>
-        <translation>Endringsdato</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="112"/>
-        <source>Pages</source>
-        <translation>Sider</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="488"/>
-        <source>Select PDF Files</source>
-        <translation>Velg PDF-filer</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="488"/>
-        <location filename="../source/view.py" line="566"/>
-        <source>PDF Files (*.pdf)</source>
-        <translation>PDF-filer (*.pdf)</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="504"/>
-        <source>No rows selected.</source>
-        <translation>Ingen rader er valgt.</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="521"/>
-        <source>Update PDF from Disk</source>
-        <translation>Oppdater PDF fra disk</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="524"/>
-        <source>Relocate/Change PDF...</source>
-        <translation>Flytt/bytt PDF …</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="527"/>
-        <source>Update {0} PDFs from Disk</source>
-        <translation>Oppdater {0} PDF-er fra disk</translation>
-    </message>
-    <message>
-        <source>Edit Bookmarks...</source>
-        <translation type="vanished">Rediger bokmerker …</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="96"/>
-        <location filename="../source/view.py" line="725"/>
+        <location filename="../source/view.py" line="915"/>
+        <location filename="../source/view.py" line="289"/>
         <source> Hide Bookmarks</source>
         <translation> Skjul bokmerker</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="96"/>
-        <location filename="../source/view.py" line="725"/>
+        <location filename="../source/view.py" line="915"/>
+        <location filename="../source/view.py" line="289"/>
         <source> Show Bookmarks</source>
         <translation> Vis bokmerker</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="537"/>
+        <location filename="../source/view.py" line="292"/>
+        <source> Merge PDFs</source>
+        <translation> Slå sammen PDF-er</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="295"/>
+        <source>Output File:</source>
+        <translation>Utdatafil:</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="296"/>
+        <source> Set Output Directory</source>
+        <translation> Velg utdatamappe</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="934"/>
+        <location filename="../source/view.py" line="297"/>
+        <source>Current Output Dir:
+{0}</source>
+        <translation>Gjeldende utdatamappe:
+{0}</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="303"/>
+        <source>Name</source>
+        <translation>Navn</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="304"/>
+        <source>Size (KB)</source>
+        <translation>Størrelse (KB)</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="305"/>
+        <source>Modified Date</source>
+        <translation>Endringsdato</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="306"/>
+        <source>Pages</source>
+        <translation>Sider</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="387"/>
+        <source>&amp;Undo {0}</source>
+        <translation>&amp;Angre {0}</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="389"/>
+        <source>&amp;Undo</source>
+        <translation>&amp;Angre</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="393"/>
+        <source>&amp;Redo {0}</source>
+        <translation>&amp;Gjør om {0}</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="395"/>
+        <source>&amp;Redo</source>
+        <translation>&amp;Gjør om</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="678"/>
+        <source>Select PDF Files</source>
+        <translation>Velg PDF-filer</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="756"/>
+        <location filename="../source/view.py" line="678"/>
+        <source>PDF Files (*.pdf)</source>
+        <translation>PDF-filer (*.pdf)</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="694"/>
+        <source>No rows selected.</source>
+        <translation>Ingen rader er valgt.</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="711"/>
+        <source>Update PDF from Disk</source>
+        <translation>Oppdater PDF fra disk</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="714"/>
+        <source>Relocate/Change PDF...</source>
+        <translation>Flytt/bytt PDF …</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="717"/>
+        <source>Update {0} PDFs from Disk</source>
+        <translation>Oppdater {0} PDF-er fra disk</translation>
+    </message>
+    <message>
+        <location filename="../source/view.py" line="727"/>
         <source>Remove</source>
         <translation>Fjern</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="539"/>
+        <location filename="../source/view.py" line="729"/>
         <source>Remove {0} PDFs</source>
         <translation>Fjern {0} PDF-er</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="564"/>
+        <location filename="../source/view.py" line="754"/>
         <source>Select Replacement for {0}</source>
         <translation>Velg erstatning for {0}</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="598"/>
+        <location filename="../source/view.py" line="788"/>
         <source>PDF Updated</source>
         <translation>PDF oppdatert</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="599"/>
+        <location filename="../source/view.py" line="789"/>
         <source>The following changes were detected:
 
 </source>
@@ -492,7 +516,7 @@ eller klikk «Legg til PDF-er» for å begynne</translation>
 </translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="601"/>
+        <location filename="../source/view.py" line="791"/>
         <source>
 
 Custom bookmarks have been preserved.</source>
@@ -501,18 +525,18 @@ Custom bookmarks have been preserved.</source>
 Egendefinerte bokmerker er beholdt.</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="606"/>
+        <location filename="../source/view.py" line="796"/>
         <source>{0} PDF(s) checked — no changes detected.</source>
         <translation>{0} PDF(-er) sjekket — ingen endringer oppdaget.</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="620"/>
-        <location filename="../source/view.py" line="846"/>
+        <location filename="../source/view.py" line="1036"/>
+        <location filename="../source/view.py" line="810"/>
         <source>Missing Files</source>
         <translation>Manglende filer</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="621"/>
+        <location filename="../source/view.py" line="811"/>
         <source>Some PDF files in the list could not be found.
 
 </source>
@@ -521,27 +545,27 @@ Egendefinerte bokmerker er beholdt.</translation>
 </translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="622"/>
+        <location filename="../source/view.py" line="812"/>
         <source>Remove or relocate the missing files (shown in red) before merging.</source>
         <translation>Fjern eller flytt de manglende filene (vist i rødt) før sammenslåing.</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="624"/>
+        <location filename="../source/view.py" line="814"/>
         <source>OK</source>
         <translation>OK</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="628"/>
+        <location filename="../source/view.py" line="818"/>
         <source>merged_output.pdf</source>
         <translation>sammenslatt_utdata.pdf</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="634"/>
+        <location filename="../source/view.py" line="824"/>
         <source>Confirm Overwrite</source>
         <translation>Bekreft overskriving</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="635"/>
+        <location filename="../source/view.py" line="825"/>
         <source>File exists:
 {0}
 Overwrite?</source>
@@ -550,92 +574,91 @@ Overwrite?</source>
 Overskrive?</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="638"/>
-        <location filename="../source/view.py" line="815"/>
+        <location filename="../source/view.py" line="1005"/>
+        <location filename="../source/view.py" line="828"/>
         <source>Yes</source>
         <translation>Ja</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="639"/>
-        <location filename="../source/view.py" line="816"/>
+        <location filename="../source/view.py" line="1006"/>
+        <location filename="../source/view.py" line="829"/>
         <source>No</source>
         <translation>Nei</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="643"/>
+        <location filename="../source/view.py" line="833"/>
         <source>Merge cancelled.</source>
         <translation>Sammenslåing avbrutt.</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="673"/>
+        <location filename="../source/view.py" line="863"/>
         <source>Page {0}</source>
         <translation>Side {0}</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="729"/>
+        <location filename="../source/view.py" line="919"/>
         <source>Select Output Directory</source>
         <translation>Velg utdatamappe</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="744"/>
-        <source>Current Output Dir:
-{0}</source>
-        <translation>Gjeldende utdatamappe:
-{0}</translation>
-    </message>
-    <message>
-        <location filename="../source/view.py" line="766"/>
+        <location filename="../source/view.py" line="956"/>
         <source>Merge Successful</source>
         <translation>Sammenslåing vellykket</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="768"/>
+        <location filename="../source/view.py" line="958"/>
         <source>Merge Error</source>
         <translation>Sammenslåingsfeil</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="796"/>
+        <location filename="../source/view.py" line="986"/>
         <source>Save Project As</source>
         <translation>Lagre prosjekt som</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="798"/>
-        <location filename="../source/view.py" line="827"/>
+        <location filename="../source/view.py" line="1017"/>
+        <location filename="../source/view.py" line="988"/>
         <source>PDF Merger Project (*.pdfm)</source>
         <translation>PDF Merger-prosjekt (*.pdfm)</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="811"/>
-        <location filename="../source/view.py" line="825"/>
+        <location filename="../source/view.py" line="1015"/>
+        <location filename="../source/view.py" line="1001"/>
         <source>Open Project</source>
         <translation>Åpne prosjekt</translation>
     </message>
     <message>
-        <location filename="../source/view.py" line="812"/>
+        <location filename="../source/view.py" line="1002"/>
         <source>Opening a project will replace the current PDF list.
 Continue?</source>
         <translation>Å åpne et prosjekt vil erstatte den gjeldende PDF-listen.
 Fortsette?</translation>
     </message>
+    <message>
+        <source> Edit Bookmarks</source>
+        <translation type="vanished"> Rediger bokmerker</translation>
+    </message>
+    <message>
+        <source>Edit Bookmarks...</source>
+        <translation type="vanished">Rediger bokmerker …</translation>
+    </message>
 </context>
 <context>
     <name>PDFListViewModel</name>
     <message>
-        <location filename="../source/viewmodel.py" line="219"/>
-        <source>Reorder PDFs</source>
-        <translation>Endre rekkefølge på PDF-er</translation>
-    </message>
-    <message>
-        <location filename="../source/viewmodel.py" line="256"/>
+        <location filename="../source/viewmodel.py" line="259"/>
         <source>FILE NOT FOUND
 Path: {0}</source>
         <translation>FIL IKKE FUNNET
 Sti: {0}</translation>
     </message>
     <message>
-        <location filename="../source/viewmodel.py" line="314"/>
+        <source>Reorder PDFs</source>
+        <translation type="vanished">Endre rekkefølge på PDF-er</translation>
+    </message>
+    <message>
         <source>Sort PDFs</source>
-        <translation>Sorter PDF-er</translation>
+        <translation type="vanished">Sorter PDF-er</translation>
     </message>
 </context>
 <context>
@@ -732,12 +755,12 @@ Sti: {0}</translation>
 <context>
     <name>main</name>
     <message>
-        <location filename="../source/main.py" line="75"/>
+        <location filename="../source/main.py" line="62"/>
         <source>A critical error occurred.</source>
         <translation>En kritisk feil oppstod.</translation>
     </message>
     <message>
-        <location filename="../source/main.py" line="76"/>
+        <location filename="../source/main.py" line="63"/>
         <source>Details:
 {0}
 
@@ -748,7 +771,7 @@ See console for full traceback.</source>
 Se konsollen for fullstendig feilsporing.</translation>
     </message>
     <message>
-        <location filename="../source/main.py" line="77"/>
+        <location filename="../source/main.py" line="64"/>
         <source>Application Error</source>
         <translation>Applikasjonsfeil</translation>
     </message>

@@ -58,7 +58,7 @@ class BookmarksTreeWidget(QTreeWidget):
         super().mouseReleaseEvent(event)
 
     def dragMoveEvent(self, event):
-            # 1. Call super first so Qt calculates the correct drop indicator position
+        # 1. Call super first so Qt calculates the correct drop indicator position
         super().dragMoveEvent(event)
         
         target_item = self.itemAt(event.pos())
@@ -179,31 +179,35 @@ class BookmarksTreeWidget(QTreeWidget):
             
         if pane:
             if event.key() == Qt.Key.Key_Delete or event.key() == Qt.Key.Key_Backspace:
-                pane._delete_item(item)
+                pane._delete_items()
                 event.accept()
                 return
-            elif event.key() == Qt.Key.Key_Tab:
-                pane._demote_item(item)
+            elif (event.key() == Qt.Key.Key_Left and has_alt) or event.key() == Qt.Key.Key_Backtab: # Alt + Left Arrow to Promote
+                if len(pane._get_selected_bookmarks()) > 1:
+                    pane._promote_items()
+                else:
+                    pane._promote_item(item)
                 event.accept()
                 return
-            elif event.key() == Qt.Key.Key_Backtab: # Shift+Tab
-                pane._promote_item(item)
-                event.accept()
-                return
-            elif event.key() == Qt.Key.Key_Left and has_alt: # Alt + Left Arrow to Promote
-                pane._promote_item(item)
-                event.accept()
-                return
-            elif event.key() == Qt.Key.Key_Right and has_alt: # Alt + Right Arrow to Demote
-                pane._demote_item(item)
+            elif (event.key() == Qt.Key.Key_Right and has_alt) or event.key() == Qt.Key.Key_Tab: # Alt + Right Arrow to Demote
+                if len(pane._get_selected_bookmarks()) > 1:
+                    pane._demote_items()
+                else:
+                    pane._demote_item(item)
                 event.accept()
                 return
             elif event.key() == Qt.Key.Key_Up and has_alt: # Alt + Up Arrow to Move Up
-                pane._move_item_up(item)
+                if len(pane._get_selected_bookmarks()) > 1:
+                    pane._move_items_up()
+                else:
+                    pane._move_item_up(item)
                 event.accept()
                 return
             elif event.key() == Qt.Key.Key_Down and has_alt: # Alt + Down Arrow to Move Down
-                pane._move_item_down(item)
+                if len(pane._get_selected_bookmarks()) > 1:
+                    pane._move_items_down()
+                else:
+                    pane._move_item_down(item)
                 event.accept()
                 return
             elif event.key() == Qt.Key.Key_Insert:
@@ -264,7 +268,7 @@ class BookmarksPane(QWidget):
         
         # Drag and drop for reordering and reparenting
         self.tree.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.tree.setAlternatingRowColors(False)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.layout.addWidget(self.tree)
@@ -288,6 +292,8 @@ class BookmarksPane(QWidget):
         item = self.tree.itemAt(pos)
         menu = QMenu()
         global_pos = self.tree.viewport().mapToGlobal(pos)
+
+        multiple_selected = len(self._get_selected_bookmarks()) > 1
         
         if item:
             data = item.data(0, Qt.ItemDataRole.UserRole)
@@ -300,29 +306,60 @@ class BookmarksPane(QWidget):
                 if action == add_child_action:
                     self._add_child(item)
             elif isinstance(data, BookmarkItem):
+                # Initialize actions to None to prevent UnboundLocalError if multiple bookmarks are selected
+                add_action = None
+                add_child_action = None
+
                 # Bookmark Node
-                add_action = menu.addAction(self.tr("Add Bookmark Below"))
-                add_child_action = menu.addAction(self.tr("Add Child Bookmark"))
+                if (len(self._get_selected_bookmarks()) == 1):
+                    add_action = menu.addAction(self.tr("Add Bookmark Below"))
+                    add_child_action = menu.addAction(self.tr("Add Child Bookmark"))
+
                 menu.addSeparator()
                 promote_action = menu.addAction(self.tr("Promote (Shift+Tab)"))
+                demote_action = menu.addAction(self.tr("Demote (Tab)"))
+                menu.addSeparator()
+                remove_action = menu.addAction(self.tr("Remove"))
 
-                # Disable promote if already top-level, or if it would become a guest top-level bookmark
-                parent = item.parent()
-                if not parent or parent.parent() is None:
-                    promote_action.setEnabled(False)
-                else:
+                independent_items = self._get_independent_selected_items()
+
+                # Check promote validity
+                can_promote = True
+                for it in independent_items:
+                    parent = it.parent()
+                    if not parent or parent.parent() is None:
+                        can_promote = False
+                        break
+
+                    # --- Guest Bookmark Guard ---
+                    # Block promoting a guest bookmark if it would become a Level-1 bookmark
                     grandparent = parent.parent()
-                    if grandparent.parent() is None:
-                        bm = item.data(0, Qt.ItemDataRole.UserRole)
+                    if grandparent.parent() is None:  # grandparent is the PDF root container
+                        from model import BookmarkItem, PDFDocument
+                        bm = it.data(0, Qt.ItemDataRole.UserRole)
                         proposed_pdf = grandparent.data(0, Qt.ItemDataRole.UserRole)
                         if (isinstance(bm, BookmarkItem) and 
                             isinstance(proposed_pdf, PDFDocument) and 
                             bm.source_pdf.file_path != proposed_pdf.file_path):
-                            promote_action.setEnabled(False)
+                            can_promote = False
+                            break
 
-                demote_action = menu.addAction(self.tr("Demote (Tab)"))
-                menu.addSeparator()
-                remove_action = menu.addAction(self.tr("Remove"))
+                promote_action.setEnabled(can_promote)
+
+                # Check demote validity
+                can_demote = True
+                for it in independent_items:
+                    parent = it.parent()
+                    if parent:
+                        index = parent.indexOfChild(it)
+                        if index == 0: # First child cannot be demoted
+                            can_demote = False
+                            break
+                    else: # No parent means it is a top-level bookmark, cannot be demoted
+                        can_demote = False
+                        break
+                
+                demote_action.setEnabled(can_demote)
                 
                 action = menu.exec(global_pos)
                 if action == add_action:
@@ -330,11 +367,17 @@ class BookmarksPane(QWidget):
                 elif action == add_child_action:
                     self._add_child(item)
                 elif action == promote_action:
-                    self._promote_item(item)
+                    if multiple_selected:
+                        self._promote_items()
+                    else:
+                        self._promote_item(item)
                 elif action == demote_action:
-                    self._demote_item(item)
+                    if multiple_selected:
+                        self._demote_items()
+                    else:
+                        self._demote_item(item)
                 elif action == remove_action:
-                    self._delete_item(item)
+                    self._delete_items()
         else:
             # Clicked empty space
             if self.tree.topLevelItemCount() > 0:
@@ -592,12 +635,25 @@ class BookmarksPane(QWidget):
             # Update viewmodel without triggering _populate_tree
             self.vm.global_toc_changed.disconnect(self._populate_tree)
             try:
-                self.vm.update_global_toc(new_toc, "Edit Bookmarks", old_state, "BookmarksPane")
+                self.vm.update_global_toc(new_toc, self.tr("Edit Bookmarks"), old_state, "BookmarksPane")
             finally:
                 self.vm.global_toc_changed.connect(self._populate_tree)
         finally:
             self.tree.blockSignals(False)
             self._is_populating = False
+
+    def _get_selected_bookmarks(self):
+        """Returns a list of selected QTreeWidgetItem objects that represent actual bookmarks."""
+        from model import BookmarkItem
+        selected_items = self.tree.selectedItems()
+
+        # Filter out items that have no parent (the PDF root containers)
+        # and verify their user data is indeed a BookmarkItem
+        return [
+            item for item in selected_items 
+            if item.parent() is not None 
+            and isinstance(item.data(0, Qt.ItemDataRole.UserRole), BookmarkItem)
+        ]
 
     def _on_selection_changed(self):
         item = self.tree.currentItem()
@@ -618,6 +674,62 @@ class BookmarksPane(QWidget):
             parent.removeChild(item)
         self._sync_to_viewmodel()
 
+    def _delete_items(self):
+        selected_bookmarks = self._get_selected_bookmarks()
+        
+        if not selected_bookmarks:
+            return
+        
+        self.vm.undo_stack.beginMacro(self.tr("Delete Bookmark") if len(selected_bookmarks) == 1 else self.tr("Delete Bookmarks"))
+        try:
+            for item in selected_bookmarks:
+                parent = item.parent()
+                if parent:
+                    parent.removeChild(item)
+            self._sync_to_viewmodel()
+        finally:
+            self.vm.undo_stack.endMacro()
+
+    def _get_sorted_selected_items(self):
+        selected = self._get_selected_bookmarks()
+        if not selected:
+            return []
+        
+        # 1. Collect all items in their visual top-to-bottom order
+        visual_order = []
+        it = QTreeWidgetItemIterator(self.tree)
+        while it.value():
+            visual_order.append(it.value())
+            it += 1
+        # 2. Map each item to its index for O(1) lookups
+        index_map = {item: i for i, item in enumerate(visual_order)}
+        # 3. Sort your selected items list using the index map
+        # (Use reverse=True if you ever need bottom-to-top sorting!)
+        return sorted(selected, key=lambda item: index_map.get(item, 0))
+
+    def _get_independent_selected_items(self):
+        selected = self._get_sorted_selected_items()
+        selected_set = set(selected)
+        independent_items = []
+    
+        for item in selected:
+            # Walk up the parent tree of this item
+            ancestor = item.parent()
+            has_selected_ancestor = False
+        
+            while ancestor is not None:
+                if ancestor in selected_set:
+                    has_selected_ancestor = True
+                    break
+                ancestor = ancestor.parent()
+            
+            # If no ancestor is selected, this is a top-level root of the selection block!
+            if not has_selected_ancestor:
+                independent_items.append(item)
+            
+        return independent_items
+
+
     def _demote_item(self, item):
         parent = item.parent()
         if parent:
@@ -629,6 +741,37 @@ class BookmarksPane(QWidget):
                 prev_sibling.setExpanded(True)
                 self.tree.setCurrentItem(item)
                 self._sync_to_viewmodel()
+
+    def _demote_items(self):
+        # 1. Save the selection models
+        selected_model_ids = {
+            id(item.data(0, Qt.ItemDataRole.UserRole)) 
+            for item in self._get_selected_bookmarks()
+        }
+        self.vm.undo_stack.beginMacro(self.tr("Demote Bookmarks"))
+        try:
+            items = self._get_independent_selected_items()
+            for item in items:
+                self._demote_item(item)
+            self._sync_to_viewmodel()
+        
+            # 2. Restore the selection
+            self.tree.blockSignals(True)
+            try:
+                # Clear current selection first
+                self.tree.clearSelection()
+                
+                it = QTreeWidgetItemIterator(self.tree)
+                while it.value():
+                    tree_item = it.value()
+                    model = tree_item.data(0, Qt.ItemDataRole.UserRole)
+                    if id(model) in selected_model_ids:
+                        tree_item.setSelected(True)
+                    it += 1
+            finally:
+                self.tree.blockSignals(False)
+        finally: 
+            self.vm.undo_stack.endMacro()
 
     def _promote_item(self, item):
         parent = item.parent()
@@ -655,6 +798,38 @@ class BookmarksPane(QWidget):
         self.tree.setCurrentItem(item)
         self._sync_to_viewmodel()
 
+    def _promote_items(self):
+        # 1. Save the selection models
+        selected_model_ids = {
+            id(item.data(0, Qt.ItemDataRole.UserRole)) 
+            for item in self._get_selected_bookmarks()
+        }
+        self.vm.undo_stack.beginMacro(self.tr("Promote Bookmarks"))
+        try:
+            items = reversed(self._get_independent_selected_items())
+            for item in items:
+                self._promote_item(item)
+            self._sync_to_viewmodel()
+        
+            # 2. Restore the selection
+            self.tree.blockSignals(True)
+            try:
+                # Clear current selection first
+                self.tree.clearSelection()
+                
+                it = QTreeWidgetItemIterator(self.tree)
+                while it.value():
+                    tree_item = it.value()
+                    model = tree_item.data(0, Qt.ItemDataRole.UserRole)
+                    if id(model) in selected_model_ids:
+                        tree_item.setSelected(True)
+                    it += 1
+            finally:
+                self.tree.blockSignals(False)
+        finally: 
+            self.vm.undo_stack.endMacro()
+
+
     def _move_item_up(self, item):
         parent = item.parent()
         if not parent:
@@ -667,6 +842,37 @@ class BookmarksPane(QWidget):
             self.tree.setCurrentItem(item)
             self._sync_to_viewmodel()
 
+    def _move_items_up(self):
+        # 1. Save the selection models
+        selected_model_ids = {
+            id(item.data(0, Qt.ItemDataRole.UserRole)) 
+            for item in self._get_selected_bookmarks()
+        }
+        self.vm.undo_stack.beginMacro(self.tr("Move Bookmarks Up"))
+        try:
+            items = self._get_independent_selected_items()
+            for item in items:
+                self._move_item_up(item)
+            self._sync_to_viewmodel()
+        
+            # 2. Restore the selection
+            self.tree.blockSignals(True)
+            try:
+                # Clear current selection first
+                self.tree.clearSelection()
+                
+                it = QTreeWidgetItemIterator(self.tree)
+                while it.value():
+                    tree_item = it.value()
+                    model = tree_item.data(0, Qt.ItemDataRole.UserRole)
+                    if id(model) in selected_model_ids:
+                        tree_item.setSelected(True)
+                    it += 1
+            finally:
+                self.tree.blockSignals(False)
+        finally: 
+            self.vm.undo_stack.endMacro()
+
     def _move_item_down(self, item):
         parent = item.parent()
         if not parent:
@@ -678,6 +884,37 @@ class BookmarksPane(QWidget):
             parent.insertChild(index + 1, item)
             self.tree.setCurrentItem(item)
             self._sync_to_viewmodel()
+
+    def _move_items_down(self):
+        # 1. Save the selection models
+        selected_model_ids = {
+            id(item.data(0, Qt.ItemDataRole.UserRole)) 
+            for item in self._get_selected_bookmarks()
+        }
+        self.vm.undo_stack.beginMacro(self.tr("Move Bookmarks Down"))
+        try:
+            items = reversed(self._get_independent_selected_items())
+            for item in items:
+                self._move_item_down(item)
+            self._sync_to_viewmodel()
+        
+            # 2. Restore the selection
+            self.tree.blockSignals(True)
+            try:
+                # Clear current selection first
+                self.tree.clearSelection()
+                
+                it = QTreeWidgetItemIterator(self.tree)
+                while it.value():
+                    tree_item = it.value()
+                    model = tree_item.data(0, Qt.ItemDataRole.UserRole)
+                    if id(model) in selected_model_ids:
+                        tree_item.setSelected(True)
+                    it += 1
+            finally:
+                self.tree.blockSignals(False)
+        finally: 
+            self.vm.undo_stack.endMacro()
 
     def _create_new_item(self, source_pdf):
         new_bm = BookmarkItem(title=self.tr("New Bookmark"), page=1, level=1, source_pdf=source_pdf)
