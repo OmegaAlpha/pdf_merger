@@ -208,6 +208,47 @@ QLabel#emptyStateLabel {
     font-size: 18px;
 }
 
+/* CheckBox styling */
+QCheckBox {
+    spacing: 8px;
+    color: #202020;
+}
+
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1px solid #D1D1D1;
+    border-radius: 4px;
+    background-color: #FFFFFF;
+}
+
+QCheckBox::indicator:hover {
+    border-color: #0078D4;
+    background-color: #F3F9FF;
+}
+
+QCheckBox::indicator:pressed {
+    background-color: #E5F1FB;
+    border-color: #005A9E;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #0078D4;
+    border-color: #0078D4;
+    image: url(checkmark.svg);
+}
+
+QCheckBox::indicator:checked:hover {
+    background-color: #1084D8;
+    border-color: #1084D8;
+}
+
+QCheckBox::indicator:checked:pressed {
+    background-color: #005A9E;
+    border-color: #005A9E;
+}
+
+
 /* Splitter — visual rendering is handled by ThinSplitterHandle.paintEvent */
 QSplitter::handle {
     background-color: transparent;
@@ -339,5 +380,40 @@ QTreeView#bookmarksTree QLineEdit, BookmarksTreeWidget#bookmarksTree QLineEdit {
     background-color: #FFFFFF;
     font-size: 11px !important;
     font-family: "Segoe UI Variable", "Segoe UI", "-apple-system", "BlinkMacSystemFont", "Roboto", "Helvetica Neue", sans-serif !important;
+}
+
+/* Tab Widget and Tab Bar styling */
+QTabWidget::pane {
+    border: 1px solid #D1D1D1;
+    background-color: #F3F3F3;
+    border-radius: 4px;
+    position: absolute;
+    top: -1px;
+}
+
+QTabBar::tab {
+    background-color: #E1E1E1; /* Highly visible inactive tab */
+    color: #606060;
+    border: 1px solid #D1D1D1;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    padding: 6px 16px;
+    margin-right: 2px;
+}
+
+QTabBar::tab:selected {
+    background-color: #F3F3F3; /* Blends perfectly into the pane background */
+    color: #202020;
+    border-bottom-color: #F3F3F3;
+    font-weight: bold;
+}
+
+QTabBar::tab:hover:!selected {
+    background-color: #D5D5D5;
+    color: #202020;
+}
+
+QTabWidget QWidget#tab_general, QTabWidget QWidget#tab_operations {
+    background-color: #F3F3F3; /* Same light gray as parent layout, no more white background */
 }
 

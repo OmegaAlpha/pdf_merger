@@ -362,9 +362,9 @@ class BookmarksPane(QWidget):
                 demote_action.setEnabled(can_demote)
                 
                 action = menu.exec(global_pos)
-                if action == add_action:
+                if add_action and action == add_action:
                     self._add_sibling(item)
-                elif action == add_child_action:
+                elif add_child_action and action == add_child_action:
                     self._add_child(item)
                 elif action == promote_action:
                     if multiple_selected:

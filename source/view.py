@@ -952,6 +952,10 @@ class MainWindow(QMainWindow):
         
         self.progress_bar.hide()
         
+        # Clear text selection and return focus back to the merge button
+        self.output_name.deselect()
+        self.merge_btn.setFocus()
+        
         if success:
             QMessageBox.information(self, self.tr("Merge Successful"), message)
         else:

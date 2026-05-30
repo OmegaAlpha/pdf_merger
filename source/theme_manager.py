@@ -99,7 +99,13 @@ class ThemeManager(QObject):
             if qss_path and os.path.exists(qss_path):
                 try:
                     with open(qss_path, "r", encoding="utf-8") as f:
-                        self.app.setStyleSheet(f.read())
+                        qss_content = f.read()
+                    
+                    # Resolve absolute path for checkmark.svg to prevent CWD loading issues
+                    checkmark_path = os.path.join(os.path.dirname(qss_path), "checkmark.svg").replace("\\", "/")
+                    qss_content = qss_content.replace("url(checkmark.svg)", f"url('{checkmark_path}')")
+                    
+                    self.app.setStyleSheet(qss_content)
                     break
                 except Exception as e:
                     print(f"Error loading stylesheet from {qss_path}: {e}")

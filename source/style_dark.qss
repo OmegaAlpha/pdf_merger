@@ -206,6 +206,47 @@ QLabel#emptyStateLabel {
     font-size: 18px;
 }
 
+/* CheckBox styling */
+QCheckBox {
+    spacing: 8px;
+    color: #E0E0E0;
+}
+
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1px solid #4A4A4F;
+    border-radius: 4px;
+    background-color: #2D2D30;
+}
+
+QCheckBox::indicator:hover {
+    border-color: #0078D4;
+    background-color: #353538;
+}
+
+QCheckBox::indicator:pressed {
+    background-color: #1E1E1E;
+    border-color: #005A9E;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #0078D4;
+    border-color: #0078D4;
+    image: url(checkmark.svg);
+}
+
+QCheckBox::indicator:checked:hover {
+    background-color: #1084D8;
+    border-color: #1084D8;
+}
+
+QCheckBox::indicator:checked:pressed {
+    background-color: #005A9E;
+    border-color: #005A9E;
+}
+
+
 /* Splitter — visual rendering is handled by ThinSplitterHandle.paintEvent */
 QSplitter::handle {
     background-color: transparent;
@@ -338,4 +379,40 @@ QTreeView#bookmarksTree QLineEdit, BookmarksTreeWidget#bookmarksTree QLineEdit {
     font-size: 11px !important;
     font-family: "Segoe UI Variable", "Segoe UI", "-apple-system", "BlinkMacSystemFont", "Roboto", "Helvetica Neue", sans-serif !important;
 }
+
+/* Tab Widget and Tab Bar styling */
+QTabWidget::pane {
+    border: 1px solid #3E3E42;
+    background-color: #1E1E1E;
+    border-radius: 4px;
+    position: absolute;
+    top: -1px;
+}
+
+QTabBar::tab {
+    background-color: #2D2D30; /* Highly visible inactive tab */
+    color: #888888;
+    border: 1px solid #3E3E42;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    padding: 6px 16px;
+    margin-right: 2px;
+}
+
+QTabBar::tab:selected {
+    background-color: #1E1E1E; /* Blends perfectly into the pane background */
+    color: #FFFFFF;
+    border-bottom-color: #1E1E1E;
+    font-weight: bold;
+}
+
+QTabBar::tab:hover:!selected {
+    background-color: #353538;
+    color: #FFFFFF;
+}
+
+QTabWidget QWidget#tab_general, QTabWidget QWidget#tab_operations {
+    background-color: #1E1E1E; /* Same dark gray as parent layout, no more white background */
+}
+
 

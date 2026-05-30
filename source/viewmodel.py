@@ -14,8 +14,9 @@ from PySide6.QtCore import (
     Signal,
     QSettings,
     QCoreApplication,
+    QUrl,
 )
-from PySide6.QtGui import QImage, QUndoStack, QUndoCommand
+from PySide6.QtGui import QImage, QUndoStack, QUndoCommand, QDesktopServices
 
 from model import PDFDocument, BookmarkItem, ProjectState
 from engine import merge_pdfs_engine
@@ -620,7 +621,10 @@ class MainViewModel(QObject):
                     lvl, title, page = item[0], item[1], item[2]
                     self.global_toc.append(BookmarkItem(title=str(title), page=int(page), level=int(lvl), source_pdf=pdf))
         else:
-            self.global_toc.append(BookmarkItem(title=os.path.splitext(pdf.name)[0], page=1, level=1, source_pdf=pdf))
+            settings = QSettings("PDFMerger", "PDFMergerApp")
+            auto_bookmark_pref = settings.value("auto_bookmark_first_page", True, type=bool)
+            if auto_bookmark_pref:
+                self.global_toc.append(BookmarkItem(title=os.path.splitext(pdf.name)[0], page=1, level=1, source_pdf=pdf))
         
         self.global_toc_changed.emit()
         
@@ -714,6 +718,7 @@ class MainViewModel(QObject):
             dest_filename += ".pdf"
 
         output_path = os.path.join(self.output_dir, dest_filename)
+        self._last_output_path = output_path
 
         self.merge_started.emit()
         self.status_message.emit(QCoreApplication.translate("MainViewModel", "Merging started in background..."), 0)
@@ -727,6 +732,14 @@ class MainViewModel(QObject):
     def _on_merge_finished(self, success: bool, message: str):
         self.merge_completed.emit(success, message)
         self.status_message.emit(message, 7000)
+        
+        # If successfully merged, check "open_after_merge" preference (default is True)
+        if success and hasattr(self, "_last_output_path") and self._last_output_path:
+            settings = QSettings("PDFMerger", "PDFMergerApp")
+            open_after_pref = settings.value("open_after_merge", True, type=bool)
+            if open_after_pref:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(self._last_output_path))
+                
         self.worker = None
 
     # --- PDF Refresh ---
