@@ -195,6 +195,16 @@ QProgressBar::chunk {
     border-radius: 4px;
 }
 
+/* Status Bar Progress Bar */
+QStatusBar QProgressBar {
+    background-color: transparent;
+    border: none;
+}
+
+QStatusBar QProgressBar::chunk {
+    background-color: #FFFFFF;
+}
+
 /* Labels */
 QLabel {
     color: #CCCCCC;

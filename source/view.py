@@ -403,7 +403,6 @@ class MainWindow(QMainWindow):
         self.pdf_table.setModel(self.vm.pdf_list_model)
         header = self.pdf_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Column 0 (Name) stretches natively in C++ to fill remaining space
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         header.setSectionsMovable(True)
         header.setSectionsClickable(True)
@@ -413,6 +412,10 @@ class MainWindow(QMainWindow):
         
         self._is_resizing_header = False
         header.sectionResized.connect(self._on_section_resized)
+        
+        # Event filter on viewport to catch ALL resize scenarios
+        # (window resize, splitter drag, panel toggle)
+        self.pdf_table.viewport().installEventFilter(self)
 
         self.pdf_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         
@@ -518,10 +521,8 @@ class MainWindow(QMainWindow):
         header_state = settings.value("header_state")
         if header_state:
             self.pdf_table.horizontalHeader().restoreState(header_state)
-            # restoreState() resets all resize modes – re-apply so the Name
-            # column stretches and Pages stays fixed regardless of saved state.
+            # restoreState() resets all resize modes – re-apply so Pages stays fixed.
             header = self.pdf_table.horizontalHeader()
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
             header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         self._clear_sort_indicator()
 
@@ -570,42 +571,44 @@ class MainWindow(QMainWindow):
         output_layout.addWidget(self.output_dir_btn)
         self.layout.addLayout(output_layout)
 
-        # Progress bar
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 0)
-        self.progress_bar.hide()
-        self.layout.addWidget(self.progress_bar)
-
         self.setStatusBar(QStatusBar(self))
+
+        # Progress bar embedded inside the status bar, spanning the full width on the top edge
+        self.progress_bar = QProgressBar(self.statusBar())
+        self.progress_bar.setObjectName("statusBarProgress")
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setFixedHeight(3)
+        self.progress_bar.hide()
         self.vm.set_output_dir(self.vm.output_dir)
 
 
 
     def _on_section_resized(self, logicalIndex, oldSize, newSize):
+        """Standard neighbor adjustment: dragging a divider adjusts the column
+        to its right, keeping the total width constant."""
         if self._is_resizing_header:
             return
-            
+
         header = self.pdf_table.horizontalHeader()
         visual_index = header.visualIndex(logicalIndex)
-        
+
+        # If this is the last visual column, nothing to adjust
         if visual_index >= header.count() - 1:
             return
-            
+
         next_logical = header.logicalIndex(visual_index + 1)
-        
-        if header.sectionResizeMode(next_logical) == QHeaderView.ResizeMode.Stretch:
-            return
-            
+
         delta = newSize - oldSize
         next_old_size = header.sectionSize(next_logical)
         next_new_size = next_old_size - delta
-        
+
         min_size = header.minimumSectionSize()
         if next_new_size < min_size:
             next_new_size = min_size
             allowed_delta = next_old_size - min_size
             newSize = oldSize + allowed_delta
-            
+
             self._is_resizing_header = True
             header.resizeSection(logicalIndex, newSize)
             header.resizeSection(next_logical, next_new_size)
@@ -614,6 +617,25 @@ class MainWindow(QMainWindow):
             self._is_resizing_header = True
             header.resizeSection(next_logical, next_new_size)
             self._is_resizing_header = False
+
+    def _recalc_spring_column(self):
+        """Set Column 0 width so that all columns exactly fill the viewport."""
+        header = self.pdf_table.horizontalHeader()
+        viewport_width = self.pdf_table.viewport().width()
+        if viewport_width <= 0:
+            return
+        other_cols_width = sum(header.sectionSize(c) for c in range(1, header.count()))
+        new_col0 = max(100, viewport_width - other_cols_width)
+        if new_col0 != header.sectionSize(0):
+            self._is_resizing_header = True
+            header.resizeSection(0, new_col0)
+            self._is_resizing_header = False
+
+    def eventFilter(self, obj, event):
+        """Catch viewport resize events to keep Column 0 as the spring column."""
+        if obj == self.pdf_table.viewport() and event.type() == QEvent.Type.Resize:
+            self._recalc_spring_column()
+        return super().eventFilter(obj, event)
 
     def _bind_viewmodel(self):
         # View bindings (UI events to ViewModel methods)
@@ -937,14 +959,29 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(message, timeout)
 
     def on_merge_started(self):
+        import time
+        self._merge_start_time = time.time()
+
         self.add_btn.setEnabled(False)
         self.remove_btn.setEnabled(False)
         self.merge_btn.setEnabled(False)
         self.pdf_table.setEnabled(False)
         
+        self.progress_bar.setRange(0, 0)
         self.progress_bar.show()
 
     def on_merge_completed(self, success: bool, message: str):
+        import time
+        elapsed = (time.time() - getattr(self, "_merge_start_time", 0)) * 1000
+        min_duration = 1000  # 1 second minimum display duration
+        
+        if elapsed < min_duration:
+            delay = int(min_duration - elapsed)
+            QTimer.singleShot(delay, lambda: self._finish_merge_completed(success, message))
+        else:
+            self._finish_merge_completed(success, message)
+
+    def _finish_merge_completed(self, success: bool, message: str):
         self.add_btn.setEnabled(True)
         self.remove_btn.setEnabled(True)
         self.merge_btn.setEnabled(True)
@@ -969,6 +1006,13 @@ class MainWindow(QMainWindow):
         settings.setValue("window_geometry", self.saveGeometry())
         settings.setValue("header_state", self.pdf_table.horizontalHeader().saveState())
         super().closeEvent(event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "progress_bar") and self.progress_bar.parent() == self.statusBar():
+            self.progress_bar.setGeometry(0, 0, self.statusBar().width(), 3)
+
+
 
     # --- Project Save / Load handlers ---
 

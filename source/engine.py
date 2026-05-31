@@ -28,6 +28,10 @@ def merge_pdfs_engine(pdf_list: List[PDFDocument], output_path: str, global_toc:
             name = pdf_item.name
             doc_to_add = None
             try:
+                # Force a GIL release to ensure the main thread can process UI/paint events smoothly
+                import time
+                time.sleep(0.01)
+
                 doc_to_add = fitz.open(pdf_path)
                 num_pages_in_source = doc_to_add.page_count
                 if num_pages_in_source == 0:

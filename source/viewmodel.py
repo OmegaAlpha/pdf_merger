@@ -720,6 +720,11 @@ class MainViewModel(QObject):
         output_path = os.path.join(self.output_dir, dest_filename)
         self._last_output_path = output_path
 
+        # Stop thumbnail worker if running to free up GIL and CPU during merge
+        if self.thumbnail_worker:
+            self._safe_abandon_worker(self.thumbnail_worker)
+            self.thumbnail_worker = None
+
         self.merge_started.emit()
         self.status_message.emit(QCoreApplication.translate("MainViewModel", "Merging started in background..."), 0)
 
