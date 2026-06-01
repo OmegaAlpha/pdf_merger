@@ -435,10 +435,15 @@ class BookmarksPane(QWidget):
             last_item_at_level = {}
             for bm in self.vm.global_toc:
                 pdf = bm.host_pdf if bm.host_pdf is not None else bm.source_pdf
-                if id(pdf) not in pdf_root_nodes:
+                root_item = pdf_root_nodes.get(id(pdf))
+                if root_item is None:
+                    # Robust fallback matching by equality or file_path comparison
+                    for pdf_item in pdf_list:
+                        if pdf_item == pdf or os.path.abspath(pdf_item.file_path) == os.path.abspath(pdf.file_path):
+                            root_item = pdf_root_nodes[id(pdf_item)]
+                            break
+                if root_item is None:
                     continue
-                    
-                root_item = pdf_root_nodes[id(pdf)]
                 
                 item = QTreeWidgetItem([bm.title, str(bm.page)])
                 if "__compiled__" in globals():

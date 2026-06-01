@@ -19,6 +19,7 @@ class BookmarkItem:
     level: int
     source_pdf: PDFDocument
     host_pdf: PDFDocument = None  # Which PDF's tree it's displayed under (None = same as source_pdf)
+    dest: Optional[dict] = None  # Stores PyMuPDF destination parameters (sanitized to standard JSON types)
 
 @dataclass
 class ProjectState:

@@ -64,14 +64,36 @@ def merge_pdfs_engine(pdf_list: List[PDFDocument], output_path: str, global_toc:
         if success_count > 0:
             if global_toc:
                 for bm in global_toc:
-                    if id(bm.source_pdf) in pdf_offsets:
-                        abs_page = pdf_offsets[id(bm.source_pdf)] + bm.page
-                        dest = {
-                            "kind": fitz.LINK_GOTO,
-                            "page": abs_page - 1,
-                            "to": fitz.Point(0, 0),
-                            "zoom": 0.0,
-                        }
+                    # Robust lookup for source_pdf's offset by identity, equality, or file_path comparison
+                    offset = pdf_offsets.get(id(bm.source_pdf))
+                    if offset is None:
+                        for pdf_item in pdf_list:
+                            if pdf_item == bm.source_pdf or os.path.abspath(pdf_item.file_path) == os.path.abspath(bm.source_pdf.file_path):
+                                offset = pdf_offsets[id(pdf_item)]
+                                break
+                                
+                    if offset is not None:
+                        abs_page = offset + bm.page
+                        if bm.dest:
+                            dest = bm.dest.copy()
+                            dest.pop("xref", None)
+                            dest.pop("parent", None)
+                            dest.pop("id", None)
+                            dest.pop("nameddest", None)
+                            dest.pop("named", None)
+                            if dest.get("kind") in (fitz.LINK_GOTO, 4):
+                                dest["page"] = abs_page - 1
+                                if dest.get("kind") == 4:
+                                    dest["kind"] = fitz.LINK_GOTO
+                            if "to" in dest and isinstance(dest["to"], list) and len(dest["to"]) == 2:
+                                dest["to"] = fitz.Point(dest["to"][0], dest["to"][1])
+                        else:
+                            dest = {
+                                "kind": fitz.LINK_GOTO,
+                                "page": abs_page - 1,
+                                "to": fitz.Point(0, 0),
+                                "zoom": 0.0,
+                            }
                         final_toc.append([bm.level, bm.title, abs_page, dest])
 
             if final_toc:

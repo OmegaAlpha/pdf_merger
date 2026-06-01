@@ -46,7 +46,26 @@ def save_project(
             "pages": pdf.pages,
         }
         if pdf.custom_toc is not None:
-            entry["custom_toc"] = pdf.custom_toc
+            # Defensively sanitize custom_toc to only include JSON-serializable types
+            sanitized_custom_toc = []
+            for item in pdf.custom_toc:
+                cleaned_item = list(item)
+                if len(cleaned_item) >= 4 and isinstance(cleaned_item[3], dict):
+                    dest = cleaned_item[3].copy()
+                    dest.pop("xref", None)
+                    dest.pop("parent", None)
+                    dest.pop("id", None)
+                    dest.pop("nameddest", None)
+                    dest.pop("named", None)
+                    if "to" in dest:
+                        to_val = dest["to"]
+                        if hasattr(to_val, "x") and hasattr(to_val, "y"):
+                            dest["to"] = [to_val.x, to_val.y]
+                        elif isinstance(to_val, tuple) or isinstance(to_val, list):
+                            dest["to"] = list(to_val)
+                    cleaned_item[3] = dest
+                sanitized_custom_toc.append(cleaned_item)
+            entry["custom_toc"] = sanitized_custom_toc
         pdf_entries.append(entry)
 
     # Serialize global_toc
@@ -57,11 +76,19 @@ def save_project(
             pdf_idx = -1
             if bm.source_pdf in pdf_list:
                 pdf_idx = pdf_list.index(bm.source_pdf)
+                
+            # Serialize host_pdf by its index in the pdf_list
+            host_idx = -1
+            if bm.host_pdf is not None and bm.host_pdf in pdf_list:
+                host_idx = pdf_list.index(bm.host_pdf)
+                
             serialized_toc.append({
                 "title": bm.title,
                 "page": bm.page,
                 "level": bm.level,
-                "pdf_index": pdf_idx
+                "pdf_index": pdf_idx,
+                "host_pdf_index": host_idx,
+                "dest": bm.dest
             })
 
     project_data = {
@@ -142,11 +169,19 @@ def load_project(
             pdf_idx = bm_data.get("pdf_index", -1)
             if 0 <= pdf_idx < len(pdfs):
                 source_pdf = pdfs[pdf_idx]
+                
+                host_pdf_idx = bm_data.get("host_pdf_index", -1)
+                host_pdf = None
+                if 0 <= host_pdf_idx < len(pdfs):
+                    host_pdf = pdfs[host_pdf_idx]
+                    
                 bm = BookmarkItem(
                     title=bm_data.get("title", QCoreApplication.translate("project_manager", "Untitled")),
                     page=bm_data.get("page", 1),
                     level=bm_data.get("level", 1),
-                    source_pdf=source_pdf
+                    source_pdf=source_pdf,
+                    host_pdf=host_pdf,
+                    dest=bm_data.get("dest", None)
                 )
                 global_toc.append(bm)
     else:
@@ -156,7 +191,8 @@ def load_project(
                 for item in pdf.custom_toc:
                     if len(item) >= 3:
                         lvl, title, page = item[0], item[1], item[2]
-                        global_toc.append(BookmarkItem(title=title, page=page, level=lvl, source_pdf=pdf))
+                        dest_dict = item[3] if len(item) >= 4 else None
+                        global_toc.append(BookmarkItem(title=title, page=page, level=lvl, source_pdf=pdf, dest=dest_dict))
             else:
                 global_toc.append(BookmarkItem(title=os.path.splitext(pdf.name)[0], page=1, level=1, source_pdf=pdf))
 

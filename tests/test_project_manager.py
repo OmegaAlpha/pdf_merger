@@ -309,3 +309,65 @@ def test_verify_skips_missing(tmp_path):
     assert changes == []
     assert pdf.missing is True
 
+
+def test_save_load_with_advanced_destinations(sample_pdfs, project_path):
+    """Verify that complex bookmark destinations (zoom, coords, URIs) round-trip perfectly."""
+    from model import BookmarkItem
+    
+    # Create internal bookmark with specific sub-page zoom/coordinates
+    bm1 = BookmarkItem(
+        title="Chapter 1 Header",
+        page=2,
+        level=2,
+        source_pdf=sample_pdfs[0],
+        dest={"kind": 1, "page": 1, "to": [100.0, 200.0], "zoom": 1.5}
+    )
+    
+    # Create external web link bookmark
+    bm2 = BookmarkItem(
+        title="More Info Online",
+        page=1,
+        level=1,
+        source_pdf=sample_pdfs[1],
+        dest={"kind": 2, "uri": "https://example.com"}
+    )
+    
+    save_project(project_path, sample_pdfs, "", "out.pdf", [bm1, bm2])
+    
+    result = load_project(project_path)
+    loaded_toc = result["global_toc"]
+    
+    assert len(loaded_toc) == 2
+    assert loaded_toc[0].title == "Chapter 1 Header"
+    assert loaded_toc[0].dest == {"kind": 1, "page": 1, "to": [100.0, 200.0], "zoom": 1.5}
+    
+    assert loaded_toc[1].title == "More Info Online"
+    assert loaded_toc[1].dest == {"kind": 2, "uri": "https://example.com"}
+
+
+def test_save_load_preserves_host_pdf(sample_pdfs, project_path):
+    """Verify that guest bookmarks (with host_pdf) preserve their layout nesting after reload."""
+    from model import BookmarkItem
+    
+    # bm belongs to sample_pdfs[0] (source) but is nested under sample_pdfs[1] (host)
+    guest_bm = BookmarkItem(
+        title="Nested Guest",
+        page=1,
+        level=1,
+        source_pdf=sample_pdfs[0],
+        host_pdf=sample_pdfs[1]
+    )
+    
+    save_project(project_path, sample_pdfs, "", "out.pdf", [guest_bm])
+    
+    result = load_project(project_path)
+    loaded_toc = result["global_toc"]
+    
+    assert len(loaded_toc) == 1
+    loaded_bm = loaded_toc[0]
+    
+    assert loaded_bm.source_pdf.name == sample_pdfs[0].name
+    assert loaded_bm.host_pdf is not None
+    assert loaded_bm.host_pdf.name == sample_pdfs[1].name
+
+

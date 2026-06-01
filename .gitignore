@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 *.pdf
 *.exe
+*.txt
 
 # PyInstaller folders and files
 build/
@@ -18,6 +19,7 @@ nuitka_build/
 # Testing and coverage
 .coverage
 .pytest_cache
+scratch/
 
 # IDE
 .vscode/

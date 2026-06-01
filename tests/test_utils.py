@@ -76,3 +76,32 @@ def test_adjust_toc_pages_and_levels_no_dict(mocker):
     assert adjusted[1][2] == 15
     assert adjusted[1][3]["kind"] == fitz.LINK_GOTO
     assert adjusted[1][3]["page"] == 14 # 0-based target page
+
+def test_adjust_toc_pages_and_levels_discrepancy(mocker):
+    """
+    Verify that when there is a discrepancy between the 1-based page number in the
+    TOC item and the 0-based page number in the destination dictionary, the 1-based
+    page number in the TOC item is synchronized to match the destination dictionary.
+    """
+    mock_doc = mocker.Mock()
+    mock_doc.resolve_names.return_value = {}
+
+    # Discrepancy:
+    # Bookmark 1: Outline page number is 5, but dest page is 1 (representing page 2).
+    # Bookmark 2: Outline page number is 10, but dest page is 0 (representing page 1).
+    toc = [
+        [1, "Mismatch 1", 5, {"kind": fitz.LINK_GOTO, "page": 1, "to": fitz.Point(0,0)}],
+        [2, "Mismatch 2", 10, {"kind": fitz.LINK_GOTO, "page": 0, "to": fitz.Point(0,0)}]
+    ]
+
+    adjusted = adjust_toc_pages_and_levels(toc, page_offset_0based=0, source_doc=mock_doc, level_increase=0)
+
+    assert len(adjusted) == 2
+    # Mismatch 1: Outline page is synchronized to 2
+    assert adjusted[0][2] == 2
+    assert adjusted[0][3]["page"] == 1
+
+    # Mismatch 2: Outline page is synchronized to 1
+    assert adjusted[1][2] == 1
+    assert adjusted[1][3]["page"] == 0
+

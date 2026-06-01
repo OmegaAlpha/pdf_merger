@@ -118,3 +118,53 @@ def test_merge_pdfs_cross_nested_bookmarks(tmp_path, dummy_pdfs):
     assert result_toc[1][0] == 2 # Level 2
     
     result_doc.close()
+
+def test_merge_pdfs_offset_robust_identity(tmp_path, dummy_pdfs):
+    """
+    Verify that the merge engine correctly resolves page offsets even if the
+    BookmarkItem's source_pdf is a different object instance in memory (different id())
+    but compares equal (==) to the PDFDocument in the merge list.
+    """
+    import copy
+    output_path = str(tmp_path / "robust_identity.pdf")
+    
+    pdf_docs = []
+    global_toc = []
+    for i, path in enumerate(dummy_pdfs):
+        doc = PDFDocument(
+            file_path=path,
+            name=os.path.basename(path),
+            size_kb=10.0,
+            modified_dt=datetime.now(),
+            pages=2
+        )
+        pdf_docs.append(doc)
+        
+        # Deepcopy the doc to simulate a different instance in memory (different id())
+        copied_doc = copy.deepcopy(doc)
+        
+        # Build global TOC using the COPIED doc
+        from model import BookmarkItem
+        global_toc.append(BookmarkItem(title=f"Doc {i+1} Page 2", page=2, level=1, source_pdf=copied_doc))
+        
+    # Verify that they are indeed different instances but compare equal
+    assert id(global_toc[0].source_pdf) != id(pdf_docs[0])
+    assert global_toc[0].source_pdf == pdf_docs[0]
+    
+    success, msg = merge_pdfs_engine(pdf_docs, output_path, global_toc)
+    assert success is True
+    
+    result_doc = fitz.open(output_path)
+    result_toc = result_doc.get_toc()
+    
+    assert len(result_toc) == 2
+    # PDF 1 offset is 0, so page 2 bookmark is page 2
+    assert result_toc[0][1] == "Doc 1 Page 2"
+    assert result_toc[0][2] == 2
+    
+    # PDF 2 offset is 2, so page 2 bookmark is page 4
+    assert result_toc[1][1] == "Doc 2 Page 2"
+    assert result_toc[1][2] == 4
+    
+    result_doc.close()
+

@@ -59,16 +59,33 @@ def adjust_toc_pages_and_levels(toc, page_offset_0based, source_doc, level_incre
                     if new_dest_page_0based < 0:
                         valid_entry = False
                     else:
+                        raw_to = resolved_dest.get("to")
+                        to_point = fitz.Point(0, 0)
+                        if raw_to:
+                            try:
+                                page_height = source_doc[original_page_0based].rect.height
+                                if hasattr(raw_to, "x") and hasattr(raw_to, "y"):
+                                    to_x = raw_to.x
+                                    to_y = raw_to.y
+                                else:
+                                    to_x = raw_to[0]
+                                    to_y = raw_to[1]
+                                # Convert from bottom-left PDF space to top-left PyMuPDF space
+                                to_point = fitz.Point(to_x, page_height - to_y)
+                            except Exception:
+                                to_point = fitz.Point(0, 0)
+
                         new_dest_dict = {
                             "kind": fitz.LINK_GOTO,
                             "page": new_dest_page_0based,
-                            "to": resolved_dest.get("to", fitz.Point(0, 0)),
+                            "to": to_point,
                             "zoom": resolved_dest.get("zoom", 0.0),
                         }
                         for key in resolved_dest:
                             if key not in ["kind", "page", "to", "zoom"]:
                                 new_dest_dict[key] = resolved_dest[key]
                         new_item[3] = new_dest_dict
+                        new_item[2] = new_dest_page_0based + 1
                 else:
                     valid_entry = False
             elif "page" in dest_dict and isinstance(dest_dict["page"], str):
@@ -88,6 +105,7 @@ def adjust_toc_pages_and_levels(toc, page_offset_0based, source_doc, level_incre
                             if key not in ["kind", "page", "to", "zoom"]:
                                 new_dest_dict[key] = dest_dict[key]
                         new_item[3] = new_dest_dict
+                        new_item[2] = new_dest_page_0based + 1
                 except ValueError:
                     valid_entry = False
             else:
@@ -110,6 +128,7 @@ def adjust_toc_pages_and_levels(toc, page_offset_0based, source_doc, level_incre
                         if key not in ["kind", "page", "to", "zoom"]:
                             new_dest_dict[key] = dest_dict[key]
                     new_item[3] = new_dest_dict
+                    new_item[2] = new_dest_page_0based + 1
             else:
                 valid_entry = False
 
@@ -130,6 +149,7 @@ def adjust_toc_pages_and_levels(toc, page_offset_0based, source_doc, level_incre
                     new_item[3] = new_dest_dict
                 else:
                     new_item.append(new_dest_dict)
+                new_item[2] = new_dest_page_0based + 1
 
         if valid_entry:
             new_toc.append(new_item)
