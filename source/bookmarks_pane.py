@@ -7,6 +7,23 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence, QFont, QColor, QBrush, QIcon
 
 from model import BookmarkItem
+from utils import get_source_asset_path
+
+# Cached icons — constructed once on first use
+_bookmark_icon_cache = None
+_bookmark_linked_icon_cache = None
+
+def _bookmark_icon():
+    global _bookmark_icon_cache
+    if _bookmark_icon_cache is None:
+        _bookmark_icon_cache = QIcon(get_source_asset_path("bookmark.svg"))
+    return _bookmark_icon_cache
+
+def _bookmark_linked_icon():
+    global _bookmark_linked_icon_cache
+    if _bookmark_linked_icon_cache is None:
+        _bookmark_linked_icon_cache = QIcon(get_source_asset_path("bookmark_linked.svg"))
+    return _bookmark_linked_icon_cache
 
 class PageDelegate(QStyledItemDelegate):
     def displayText(self, value, locale):
@@ -446,15 +463,8 @@ class BookmarksPane(QWidget):
                     continue
                 
                 item = QTreeWidgetItem([bm.title, str(bm.page)])
-                if "__compiled__" in globals():
-                    import sys
-                    bookmark_icon_path = os.path.join(os.path.dirname(sys.executable), "source", "bookmark.svg")
-                    bookmark_linked_icon_path = os.path.join(os.path.dirname(sys.executable), "source", "bookmark_linked.svg")
-                else:
-                    bookmark_icon_path = os.path.join(os.path.dirname(__file__), "bookmark.svg")
-                    bookmark_linked_icon_path = os.path.join(os.path.dirname(__file__), "bookmark_linked.svg")
                 
-                item.setIcon(0, QIcon(bookmark_icon_path))
+                item.setIcon(0, _bookmark_icon())
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
                 item.setData(0, Qt.ItemDataRole.UserRole, bm)
                 
@@ -503,12 +513,7 @@ class BookmarksPane(QWidget):
                         item.setToolTip(0, tooltip)
                         item.setToolTip(1, tooltip)
                         
-                        if "__compiled__" in globals():
-                            import sys
-                            bookmark_linked_icon_path = os.path.join(os.path.dirname(sys.executable), "source", "bookmark_linked.svg")
-                        else:
-                            bookmark_linked_icon_path = os.path.join(os.path.dirname(__file__), "bookmark_linked.svg")
-                        item.setIcon(0, QIcon(bookmark_linked_icon_path))
+                        item.setIcon(0, _bookmark_linked_icon())
                 it += 1
         finally:
             self.tree.blockSignals(False)
@@ -572,12 +577,7 @@ class BookmarksPane(QWidget):
                     item.setToolTip(0, tooltip)
                     item.setToolTip(1, tooltip)
                     
-                    if "__compiled__" in globals():
-                        import sys
-                        bookmark_linked_icon_path = os.path.join(os.path.dirname(sys.executable), "source", "bookmark_linked.svg")
-                    else:
-                        bookmark_linked_icon_path = os.path.join(os.path.dirname(__file__), "bookmark_linked.svg")
-                    item.setIcon(0, QIcon(bookmark_linked_icon_path))
+                    item.setIcon(0, _bookmark_linked_icon())
                 else:
                     # Revert to normal if it's no longer a guest
                     normal_font = item.font(0)
@@ -587,12 +587,7 @@ class BookmarksPane(QWidget):
                     item.setToolTip(0, "")
                     item.setToolTip(1, "")
                     
-                    if "__compiled__" in globals():
-                        import sys
-                        bookmark_icon_path = os.path.join(os.path.dirname(sys.executable), "source", "bookmark.svg")
-                    else:
-                        bookmark_icon_path = os.path.join(os.path.dirname(__file__), "bookmark.svg")
-                    item.setIcon(0, QIcon(bookmark_icon_path))
+                    item.setIcon(0, _bookmark_icon())
                     
                 for i in range(item.childCount()):
                     traverse(item.child(i), current_pdf, level + 1, container_pdf)
@@ -924,12 +919,7 @@ class BookmarksPane(QWidget):
     def _create_new_item(self, source_pdf):
         new_bm = BookmarkItem(title=self.tr("New Bookmark"), page=1, level=1, source_pdf=source_pdf)
         item = QTreeWidgetItem([new_bm.title, str(new_bm.page)])
-        if "__compiled__" in globals():
-            import sys
-            bookmark_icon_path = os.path.join(os.path.dirname(sys.executable), "source", "bookmark.svg")
-        else:
-            bookmark_icon_path = os.path.join(os.path.dirname(__file__), "bookmark.svg")
-        item.setIcon(0, QIcon(bookmark_icon_path))
+        item.setIcon(0, _bookmark_icon())
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
         item.setData(0, Qt.ItemDataRole.UserRole, new_bm)
         return item

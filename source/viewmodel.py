@@ -74,7 +74,7 @@ class AddPDFWorker(QThread):
                 raw_toc = doc.get_toc(simple=False)
                 
                 # Resolve named destinations to standard GOTO links immediately during load
-                from utils import adjust_toc_pages_and_levels
+                from utils import check_fitz_toc_for_first_page, adjust_toc_pages_and_levels, sanitize_dest_dict
                 resolved_toc = adjust_toc_pages_and_levels(raw_toc, 0, doc)
                 doc.close()
                 
@@ -83,24 +83,7 @@ class AddPDFWorker(QThread):
                 for item in resolved_toc:
                     cleaned_item = list(item)
                     if len(cleaned_item) >= 4 and isinstance(cleaned_item[3], dict):
-                        dest = cleaned_item[3].copy()
-                        dest.pop("xref", None)
-                        dest.pop("parent", None)
-                        dest.pop("id", None)
-                        dest.pop("nameddest", None)
-                        dest.pop("named", None)
-                        
-                        # Convert any remaining named destinations (4) to GOTO links (1)
-                        if dest.get("kind") == 4:
-                            dest["kind"] = fitz.LINK_GOTO
-                            
-                        if "to" in dest:
-                            to_val = dest["to"]
-                            if hasattr(to_val, "x") and hasattr(to_val, "y"):
-                                dest["to"] = [to_val.x, to_val.y]
-                            elif isinstance(to_val, tuple) or isinstance(to_val, list):
-                                dest["to"] = list(to_val)
-                        cleaned_item[3] = dest
+                        cleaned_item[3] = sanitize_dest_dict(cleaned_item[3])
                     toc.append(cleaned_item)
 
                 pdf = PDFDocument(

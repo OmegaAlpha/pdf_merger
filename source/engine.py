@@ -5,7 +5,7 @@ from typing import List, Tuple
 
 from PySide6.QtCore import QCoreApplication
 from model import PDFDocument, BookmarkItem
-from utils import check_fitz_toc_for_first_page, adjust_toc_pages_and_levels
+from utils import check_fitz_toc_for_first_page, adjust_toc_pages_and_levels, sanitize_dest_dict
 
 def merge_pdfs_engine(pdf_list: List[PDFDocument], output_path: str, global_toc: List[BookmarkItem] = None) -> Tuple[bool, str]:
     """
@@ -75,12 +75,7 @@ def merge_pdfs_engine(pdf_list: List[PDFDocument], output_path: str, global_toc:
                     if offset is not None:
                         abs_page = offset + bm.page
                         if bm.dest:
-                            dest = bm.dest.copy()
-                            dest.pop("xref", None)
-                            dest.pop("parent", None)
-                            dest.pop("id", None)
-                            dest.pop("nameddest", None)
-                            dest.pop("named", None)
+                            dest = sanitize_dest_dict(bm.dest)
                             if dest.get("kind") in (fitz.LINK_GOTO, 4):
                                 dest["page"] = abs_page - 1
                                 if dest.get("kind") == 4:

@@ -1,4 +1,50 @@
+import os
+import sys
 import fitz
+
+
+def sanitize_dest_dict(dest):
+    """
+    Sanitize a PyMuPDF destination dictionary for JSON serialization and set_toc().
+
+    - Removes non-serializable keys (xref, parent, id, nameddest, named)
+    - Converts fitz.Point / tuple 'to' values to a plain [x, y] list
+    - Normalizes kind=4 (LINK_NAMED) to fitz.LINK_GOTO (1)
+
+    Returns a new dict; does not modify the original.
+    """
+    dest = dest.copy()
+    dest.pop("xref", None)
+    dest.pop("parent", None)
+    dest.pop("id", None)
+    dest.pop("nameddest", None)
+    dest.pop("named", None)
+
+    if dest.get("kind") == 4:
+        dest["kind"] = fitz.LINK_GOTO
+
+    if "to" in dest:
+        to_val = dest["to"]
+        if hasattr(to_val, "x") and hasattr(to_val, "y"):
+            dest["to"] = [to_val.x, to_val.y]
+        elif isinstance(to_val, (tuple, list)):
+            dest["to"] = list(to_val)
+
+    return dest
+
+
+def get_source_asset_path(filename):
+    """
+    Resolve the path to a file in the source/ directory.
+
+    Handles both Nuitka-compiled executables (where assets sit next to
+    the .exe under source/) and normal development runs (where __file__
+    points at the source directory).
+    """
+    if "__compiled__" in globals():
+        return os.path.join(os.path.dirname(sys.executable), "source", filename)
+    return os.path.join(os.path.dirname(__file__), filename)
+
 
 def check_fitz_toc_for_first_page(toc):
     """Checks a PyMuPDF ToC list for an item pointing to page 1 (1-based index)."""
