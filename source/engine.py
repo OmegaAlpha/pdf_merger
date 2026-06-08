@@ -92,6 +92,24 @@ def merge_pdfs_engine(pdf_list: List[PDFDocument], output_path: str, global_toc:
                         final_toc.append([bm.level, bm.title, abs_page, dest])
 
             if final_toc:
+                # Sanitize hierarchy levels to ensure PyMuPDF set_toc() succeeds:
+                # 1. First entry must be level 1.
+                # 2. Every subsequent entry's level must be <= previous level + 1.
+                # 3. Sibling headings with the same level do not stair-step.
+                stack = []
+                for entry in final_toc:
+                    orig_lvl = entry[0]
+                    while stack and stack[-1][0] >= orig_lvl:
+                        stack.pop()
+                    
+                    if not stack:
+                        mapped_lvl = 1
+                    else:
+                        mapped_lvl = stack[-1][1] + 1
+                        
+                    stack.append((orig_lvl, mapped_lvl))
+                    entry[0] = mapped_lvl
+
                 try:
                     merged_doc.set_toc(final_toc)
                 except Exception as e:

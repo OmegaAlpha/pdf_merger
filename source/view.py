@@ -671,6 +671,9 @@ class MainWindow(QMainWindow):
         self.vm.project_saved.connect(self._on_project_saved)
         self.vm.project_load_warning.connect(self._on_project_load_warning)
 
+        # Heading detection
+        self.vm.bookmarks_generated.connect(self._on_bookmarks_generated)
+
     def _on_sort_state_changed(self, column: int, order: int):
         header = self.pdf_table.horizontalHeader()
         if column == -1:
@@ -742,6 +745,12 @@ class MainWindow(QMainWindow):
 
         menu.addSeparator()
 
+        # Generate Bookmarks from Headings (single PDF only)
+        generate_bm_action = None
+        if len(indexes) == 1:
+            generate_bm_action = menu.addAction(self.tr("Generate Bookmarks from Headings"))
+            generate_bm_action.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView))
+
         menu.addSeparator()
 
         # Remove
@@ -760,6 +769,8 @@ class MainWindow(QMainWindow):
             self._on_refresh_selected_pdfs(indexes)
         elif action == relocate_action:
             self._on_change_pdf_path(indexes[0].row())
+        elif generate_bm_action and action == generate_bm_action:
+            self._on_generate_bookmarks(indexes[0].row())
         elif action == remove_action:
             self.on_remove_pdfs()
 
@@ -1082,3 +1093,41 @@ class MainWindow(QMainWindow):
 
     def _on_project_load_warning(self, message: str):
         QMessageBox.warning(self, self.tr("Missing Files"), message)
+
+    # --- Generate Bookmarks from Headings ---
+
+    def _on_generate_bookmarks(self, row: int):
+        """Generate bookmarks for a PDF by scanning its headings."""
+        if not (0 <= row < self.vm.pdf_list_model.rowCount()):
+            return
+
+        pdf = self.vm.pdf_list_model.pdfs[row]
+
+        # Check if this PDF already has bookmarks
+        existing = [bm for bm in self.vm.global_toc if bm.source_pdf is pdf]
+        if existing:
+            msg_box = QMessageBox(self)
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            msg_box.setWindowTitle(self.tr("Replace Bookmarks"))
+            msg_box.setText(
+                self.tr("{0} already has {1} bookmark(s).\n\n"
+                        "Generating bookmarks from headings will replace them.\n"
+                        "Continue?").format(pdf.name, len(existing))
+            )
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            msg_box.setDefaultButton(QMessageBox.StandardButton.No)
+            msg_box.button(QMessageBox.StandardButton.Yes).setText(self.tr("Yes"))
+            msg_box.button(QMessageBox.StandardButton.No).setText(self.tr("No"))
+            reply = msg_box.exec()
+            if reply == QMessageBox.StandardButton.No:
+                return
+
+        self.vm.generate_bookmarks_from_headings(row)
+
+    def _on_bookmarks_generated(self, row: int, count: int):
+        """Show a success status message after bookmarks were generated."""
+        if 0 <= row < self.vm.pdf_list_model.rowCount():
+            pdf = self.vm.pdf_list_model.pdfs[row]
+            self.statusBar().showMessage(
+                self.tr("Generated {0} bookmark(s) for {1}").format(count, pdf.name), 7000
+            )

@@ -21,6 +21,7 @@ from PySide6.QtGui import QImage, QUndoStack, QUndoCommand, QDesktopServices
 from model import PDFDocument, BookmarkItem, ProjectState
 from engine import merge_pdfs_engine
 from project_manager import save_project, load_project, refresh_pdf_metadata, verify_all_pdf_metadata
+from heading_detector import detect_headings
 
 class ProjectStateCommand(QUndoCommand):
     def __init__(self, vm, old_state: ProjectState, new_state: ProjectState, description_key: str, context: str = "MainViewModel"):
@@ -356,6 +357,8 @@ class MainViewModel(QObject):
     pdfs_added = Signal(int, int) # added, errors
     global_toc_changed = Signal()
     sort_state_changed = Signal(int, int) # column, order
+    bookmarks_generated = Signal(int, int) # row, count of bookmarks generated
+    confirm_replace_bookmarks = Signal(int) # row — View should show dialog and call back
 
     # Project signals
     project_loaded = Signal(str, str)   # project file path, output_name
@@ -921,3 +924,64 @@ class MainViewModel(QObject):
             self.status_message.emit(
                 QCoreApplication.translate("MainViewModel", "Project loaded: {0}").format(os.path.basename(project_path)), 5000
             )
+
+    # --- Generate Bookmarks from Headings ---
+
+    def generate_bookmarks_from_headings(self, row: int):
+        """Detect headings in a PDF by font statistics and replace its bookmarks."""
+        if not (0 <= row < len(self.pdf_list_model.pdfs)):
+            return
+
+        pdf = self.pdf_list_model.pdfs[row]
+        if pdf.missing:
+            self.status_message.emit(
+                QCoreApplication.translate("MainViewModel", "Cannot generate bookmarks: file not found."), 5000
+            )
+            return
+
+        try:
+            headings = detect_headings(pdf.file_path)
+        except Exception as e:
+            self.status_message.emit(
+                QCoreApplication.translate("MainViewModel", "Error scanning PDF: {0}").format(e), 7000
+            )
+            return
+
+        if not headings:
+            self.status_message.emit(
+                QCoreApplication.translate("MainViewModel", "No headings detected in {0}.").format(pdf.name), 5000
+            )
+            return
+
+        old_state = self.get_state()
+
+        # Remove existing bookmarks for this PDF
+        self.global_toc = [bm for bm in self.global_toc if bm.source_pdf is not pdf]
+
+        # Insert new bookmarks
+        # Find insertion point: after the last bookmark of the previous PDF in document order
+        insert_idx = 0
+        for i, p in enumerate(self.pdf_list_model.pdfs):
+            if p is pdf:
+                break
+            insert_idx += sum(1 for bm in self.global_toc if bm.source_pdf is p)
+
+        new_bookmarks = []
+        for h in headings:
+            bm = BookmarkItem(
+                title=h["title"],
+                page=h["page"],
+                level=h["level"],
+                source_pdf=pdf,
+            )
+            new_bookmarks.append(bm)
+
+        for i, bm in enumerate(new_bookmarks):
+            self.global_toc.insert(insert_idx + i, bm)
+
+        self.commit_state(
+            QCoreApplication.translate("MainViewModel", "Generate Bookmarks"),
+            old_state,
+        )
+        self.global_toc_changed.emit()
+        self.bookmarks_generated.emit(row, len(new_bookmarks))
