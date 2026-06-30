@@ -271,10 +271,10 @@ class TestDetectHeadings:
         assert get_numbering_level("Subsection 2.1") == 2
         assert get_numbering_level("Appendix A: Details") == 1
         
-        # Non-headings/no numbers (Page 3 gets extracted as a numbered line now since we don't match specific division words)
+        # Non-headings/no numbers
         assert get_numbering_level("Introduction") is None
         assert get_numbering_level("Go to school") is None
-        assert get_numbering_level("Page 3") == 1
+        assert get_numbering_level("Page 3") is None
 
     def test_hybrid_heading_detection_with_numbers(self, tmp_path):
         """Test heading detection with numbering overrides to verify it creates correct hierarchies without stair-stepping."""
@@ -618,7 +618,7 @@ class TestMultilineMerging:
     def test_multiline_no_merge_different_styles(self):
         from heading_detector import _merge_multiline_headings
         lines = [
-            {"text": "Kapitel 1", "page": 1, "y": 100.0, "size": 20.0, "bold": True, "font": "hebo"},
+            {"text": "Section 1.1 Overview", "page": 1, "y": 100.0, "size": 20.0, "bold": True, "font": "hebo"},
             {"text": "Introduction", "page": 1, "y": 140.0, "size": 16.0, "bold": True, "font": "hebo"}, # different size -> no merge
         ]
         merged = _merge_multiline_headings(lines)
@@ -843,4 +843,148 @@ class TestTitleNestingAndMetadataFiltering:
         h_subsec = next(h for h in headings if h["title"] == "1.1 Sub-section")
         assert h_subsec["page"] == 3
         assert h_subsec["level"] == 3
+
+
+class TestEnhancedHeuristics:
+    """Test the newly added heuristic checks directly."""
+
+    def test_stricter_prefix_matching(self):
+        from heading_detector import _get_numbering_prefix
+        # Should match standard division words
+        assert _get_numbering_prefix("Chapter 1: Intro") == "1"
+        assert _get_numbering_prefix("Seksjon 1.1") == "1.1"
+        assert _get_numbering_prefix("Kapittel 3") == "3"
+        assert _get_numbering_prefix("Kapitel 2") == "2"
+        assert _get_numbering_prefix("Vedlegg A") == "A"
+        # Should NOT match arbitrary words (like middle initials/names)
+        assert _get_numbering_prefix("Niels J. Gimsing") is None
+        assert _get_numbering_prefix("Christos T. Georgakis") is None
+        assert _get_numbering_prefix("Stage 1") is None
+
+    def test_multiline_merge_prefix_relaxed_style(self):
+        from heading_detector import _merge_multiline_headings
+        lines = [
+            {"text": "Chapter 1", "page": 1, "y": 100.0, "size": 18.0, "bold": True, "font": "hebo"},
+            {"text": "Introduction to Bridges", "page": 1, "y": 130.0, "size": 26.0, "bold": True, "font": "boldfont"}, # different size/font
+        ]
+        merged = _merge_multiline_headings(lines)
+        assert len(merged) == 1
+        assert merged[0]["text"] == "Chapter 1 Introduction to Bridges"
+        assert merged[0]["size"] == 26.0
+        assert merged[0]["font"] == "boldfont"
+
+    def test_sequence_transition_validation(self):
+        from heading_detector import _is_valid_sequence_transition
+        # Sibling transitions
+        assert _is_valid_sequence_transition((1,), (2,)) is True
+        assert _is_valid_sequence_transition((2, 1), (2, 2)) is True
+        # Child transitions
+        assert _is_valid_sequence_transition((1,), (1, 1)) is True
+        assert _is_valid_sequence_transition((2, 4), (2, 4, 1)) is True
+        # Restarts
+        assert _is_valid_sequence_transition((5,), (1,)) is True
+        # Invalid transitions
+        assert _is_valid_sequence_transition((1,), (3,)) is False
+        assert _is_valid_sequence_transition((2, 1), (2, 3)) is False
+        assert _is_valid_sequence_transition((2, 1, 1), (2, 2)) is True # sibling of parent is valid
+
+    def test_toc_page_filtering(self):
+        from heading_detector import _filter_heading_lines
+        lines = [
+            {"text": "1.1 Basic Types of Cables 93", "page": 10, "y": 100.0, "size": 12.0, "bold": False}, # TOC line (references future page 93)
+            {"text": "1.1 Basic Types of Cables", "page": 93, "y": 100.0, "size": 12.0, "bold": False}, # Real line
+        ]
+        filtered = _filter_heading_lines(lines, total_pages=590)
+        assert len(filtered) == 1
+        assert filtered[0]["page"] == 93
+
+    def test_toc_based_filtering_logic(self):
+        from heading_detector import _filter_headings_with_toc
+        
+        toc_entries = [
+            {"prefix": "1", "title": "Evolution of Cable Supported Bridges", "page_str": "7"},
+            {"prefix": "2", "title": "Cables", "page_str": "85"},
+            {"prefix": "2.1", "title": "Basic Types of Cables", "page_str": "85"},
+        ]
+        
+        headings = [
+            {"title": "1 Evolution of Cable Supported Bridges", "page": 15, "level": 1},
+            {"title": "in situ", "page": 479, "level": 4},
+            {"title": "2 Cables", "page": 93, "level": 1},
+            {"title": "2.1 Basic Types of Cables", "page": 93, "level": 2},
+            {"title": "Engineering News", "page": 520, "level": 4},
+            {"title": "Index", "page": 589, "level": 2},
+        ]
+        
+        filtered = _filter_headings_with_toc(headings, toc_entries)
+        
+        titles = [h["title"] for h in filtered]
+        assert "1 Evolution of Cable Supported Bridges" in titles
+        assert "2 Cables" in titles
+        assert "2.1 Basic Types of Cables" in titles
+        assert "Index" in titles # Index is in SPECIAL_UNNUMBERED, so should be kept
+        
+        assert "in situ" not in titles
+        assert "Engineering News" not in titles
+
+    def test_multi_page_toc_detection(self, mocker):
+        from heading_detector import _find_toc_pages
+        mock_doc = mocker.MagicMock()
+        mock_doc.page_count = 3
+        
+        mock_page_1 = mocker.MagicMock()
+        mock_page_1.get_text.return_value = "Contents\n1. Section 1 ... 1"
+        
+        mock_page_2 = mocker.MagicMock()
+        mock_page_2.get_text.return_value = "2. Section 2 ... 2"
+        
+        mock_page_3 = mocker.MagicMock()
+        mock_page_3.get_text.return_value = "Normal text here without any entries"
+        
+        mock_doc.load_page.side_effect = [mock_page_1, mock_page_2, mock_page_3]
+        
+        mocker.patch("heading_detector._extract_toc_entries", side_effect=[
+            [{"title": "t"} for _ in range(5)], # page 2
+            [] # page 3
+        ])
+        
+        pages = _find_toc_pages(mock_doc)
+        assert pages == [1, 2]
+
+    def test_compound_page_numbers_parsing(self, mocker):
+        from heading_detector import _extract_toc_entries
+        mock_doc = mocker.MagicMock()
+        mock_page = mocker.MagicMock()
+        mock_page.get_text.return_value = {
+            "blocks": [
+                {
+                    "type": 0,
+                    "lines": [
+                        {
+                            "bbox": (54.0, 100, 100, 110),
+                            "spans": [{"text": "Section 1 — Introduction . . . . . 1-2"}]
+                        },
+                        {
+                            "bbox": (54.0, 110, 100, 120),
+                            "spans": [{"text": "Chapter 2 — Limit States . . . . . 2-3"}]
+                        },
+                        {
+                            "bbox": (54.0, 120, 100, 130),
+                            "spans": [{"text": "Implementation . . . . . 1-2"}]
+                        }
+                    ]
+                }
+            ]
+        }
+        mock_doc.load_page.return_value = mock_page
+        
+        entries = _extract_toc_entries(mock_doc, [1])
+        assert len(entries) == 3
+        assert entries[0]["title"] == "Section 1 — Introduction"
+        assert entries[0]["page_str"] == "1-2"
+        assert entries[1]["title"] == "Chapter 2 — Limit States"
+        assert entries[1]["page_str"] == "2-3"
+        assert entries[2]["title"] == "Implementation"
+        assert entries[2]["page_str"] == "1-2"
+
 

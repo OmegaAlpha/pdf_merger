@@ -29,6 +29,8 @@ from PySide6.QtGui import QIcon, QPixmap, QImage, QAction, QKeySequence, QShortc
 from viewmodel import MainViewModel
 from bookmarks_pane import BookmarksPane
 from settings_dialog import SettingsDialog
+from version import __version__, __build__, __build_date__
+from utils import get_source_asset_path
 
 
 class _SplitterOverlay(QWidget):
@@ -218,7 +220,9 @@ class MainWindow(QMainWindow):
         self.theme_manager = theme_manager
         self.language_manager = language_manager
         self._current_project_path = None
-        self._app_title = "PDF Merger"
+        app_suffix = f"-{__build__}" if __build__ == "dev" else ""
+        self._app_title = f"PDF Merger v{__version__}{app_suffix}"
+        self.setWindowIcon(QIcon(get_source_asset_path("app_icon.png")))
         self.setMinimumSize(QSize(900, 500))
         self.setAcceptDrops(True)
 
@@ -259,6 +263,10 @@ class MainWindow(QMainWindow):
             
         if hasattr(self, 'edit_menu'):
             self.edit_menu.setTitle(self.tr("&Edit"))
+            
+        if hasattr(self, 'help_menu'):
+            self.help_menu.setTitle(self.tr("&Help"))
+            self.about_action.setText(self.tr("&About PDF Merger"))
             # Update all commands currently on the undo stack with their translated descriptions
             try:
                 from PySide6.QtCore import QCoreApplication
@@ -351,6 +359,30 @@ class MainWindow(QMainWindow):
         self.file_menu.addAction(self.settings_action)
 
         self._setup_edit_menu()
+        self._setup_help_menu()
+
+    def _setup_help_menu(self):
+        menubar = self.menuBar()
+        self.help_menu = menubar.addMenu("")
+        
+        self.about_action = QAction("", self)
+        self.about_action.triggered.connect(self.on_about)
+        self.help_menu.addAction(self.about_action)
+
+    def on_about(self):
+        build_str = f" (Build {__build__})" if __build__ and __build__ != "dev" else ""
+        date_str = f"<p>Build Date: {__build_date__}</p>" if __build_date__ else ""
+        QMessageBox.about(
+            self,
+            self.tr("About PDF Merger"),
+            self.tr(
+                "<h3>PDF Merger v{0}{1}</h3>"
+                "<p>A modern PDF utility to merge files, manage bookmarks, "
+                "and preserve layout hierarchies.</p>"
+                "{2}"
+                "<p>Copyright © 2026</p>"
+            ).format(__version__, build_str, date_str)
+        )
 
     def _setup_edit_menu(self):
         menubar = self.menuBar()

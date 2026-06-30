@@ -17,6 +17,17 @@ from collections import Counter
 from typing import List, Dict, Tuple, Optional
 
 
+DIVISION_WORDS = (
+    r'(?:chapter|section|subsection|subsubsection|appendix|part|volume|book|'
+    r'kapitel|kapittel|kap|seksjon|del|vedlegg|tillegg|avsnitt|underavsnitt|underseksjon|bilaga|'
+    r'abschnitt|anhang|teil|band|buch|'
+    r'chapitre|annexe|partie|livre|'
+    r'capítulo|capitulo|sección|seccion|anexo|apéndice|apendice|volumen|libro|'
+    r'capitolo|sezione|appendice|sommario)'
+)
+
+
+
 def _is_valid_numbering(num_str: str) -> bool:
     """Helper to check if a numbering prefix string is valid (e.g. not a year)."""
     if num_str.isdigit():
@@ -39,14 +50,14 @@ def _get_numbering_prefix(text: str) -> Optional[str]:
     valid_prefix_pattern = r'^(?:[0-9]+(?:\.[0-9]+)*|[A-Za-z](?:\.[0-9]+)*|[IVXLCDMivxlcdm]+(?:\.[0-9]+)*)$'
 
     # 1. Word followed by a number/dotted-number: e.g. "Chapter 1", "Section 1.1", "Kap. 2", "Vedlegg A"
-    word_prefix_match = re.match(r'^[A-Za-z]+\.?\s+([A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)(?:[\.\)]|\b|\s|$)', text)
+    word_prefix_match = re.match(r'^' + DIVISION_WORDS + r'\.?\s+([A-Za-z0-9]+(?:\.[0-9]+)*)(?:[\.\)]|\b|\s|$)', text, re.IGNORECASE)
     if word_prefix_match:
         numbering = word_prefix_match.group(1)
         if re.match(valid_prefix_pattern, numbering) and _is_valid_numbering(numbering):
             return numbering
 
     # 2. Dotted hierarchical numbering: e.g. "1.1", "1.1.1", "A.1.2"
-    dotted_match = re.match(r'^([A-Za-z0-9]+(?:\.[A-Za-z0-9]+)+)(?:[\.\)]|\b|\s|$)', text)
+    dotted_match = re.match(r'^([A-Za-z0-9]+(?:\.[0-9]+)+)(?:[\.\)]|\b|\s|$)', text)
     if dotted_match:
         numbering = dotted_match.group(1)
         if re.match(valid_prefix_pattern, numbering) and _is_valid_numbering(numbering):
@@ -87,26 +98,298 @@ def get_numbering_level(text: str) -> Optional[int]:
     return len(parts)
 
 
+def _find_toc_pages(doc) -> List[int]:
+    """Find the 1-based page numbers that contain the Table of Contents."""
+    toc_keywords = {
+        "contents", "table of contents", "indhold", "innhold", "innholdsfortegnelse", "indholdsfortegnelse",
+        "inhaltsverzeichnis", "inhalt", "table des matières", "sommaire", "índice", "indice", "tabla de contenido", "sommario"
+    }
+    toc_pages = []
+    
+    first_toc_page = None
+    for page_idx in range(min(15, doc.page_count)):
+        page = doc.load_page(page_idx)
+        text = page.get_text().lower()
+        for line in text.split('\n'):
+            if line.strip() in toc_keywords:
+                first_toc_page = page_idx + 1
+                toc_pages.append(first_toc_page)
+                break
+        if first_toc_page is not None:
+            break
+            
+    # Check subsequent pages for continuation
+    if first_toc_page is not None:
+        curr_page = first_toc_page + 1
+        while curr_page <= min(15, doc.page_count):
+            entries = _extract_toc_entries(doc, [curr_page])
+            if len(entries) >= 3:
+                toc_pages.append(curr_page)
+                curr_page += 1
+            else:
+                break
+                
+    return toc_pages
+
+
+def _clean_toc_title(title: str) -> str:
+    """Clean spaced dots and raw trailing/leading dots from TOC title."""
+    title = title.strip()
+    title = re.sub(r'(?:\s*\.\s*){2,}$', '', title).strip()
+    title = re.sub(r'^\.*|\.*$', '', title).strip()
+    return title
+
+
+def _extract_toc_entries(doc, toc_pages: List[int]) -> List[Dict]:
+    """
+    Extract TOC entries (title, page, prefix, level) from the specified TOC pages.
+    """
+    entries = []
+    page_pattern_str = r'(?:[A-Za-z0-9]+[\-–][0-9]+|[0-9]+|[ivxlcdmIVXLCDM]+)'
+    page_num_pattern = re.compile(f'^{page_pattern_str}$')
+    
+    # Division pattern (e.g. "Chapter 1")
+    division_pattern = re.compile(r'^' + DIVISION_WORDS + r'\s+\d+', re.IGNORECASE)
+    
+    for page_num in toc_pages:
+        page = doc.load_page(page_num - 1)
+        raw_dict = page.get_text("dict")
+        
+        lines = []
+        for block in raw_dict.get("blocks", []):
+            if block.get("type") != 0:
+                continue
+            for line in block.get("lines", []):
+                text = "".join(s["text"] for s in line.get("spans", []))
+                x0 = line["bbox"][0]
+                lines.append({"text": text.strip(), "x0": x0})
+                
+        i = 0
+        while i < len(lines):
+            line_data = lines[i]
+            token = line_data["text"]
+            x0 = line_data["x0"]
+            
+            if not token:
+                i += 1
+                continue
+                
+            if token.lower() in ["contents", "table of contents", "bridge design manual - lrfd"]:
+                i += 1
+                continue
+            
+            # Single line check
+            single_match = re.match(r'^(?:([A-Za-z0-9\.]+)\s+)?(.*?)(?:\s*\.{2,}\s*|\s+)(' + page_pattern_str + r')$', token)
+            if single_match:
+                pref_candidate, title_candidate, pg_str = single_match.groups()
+                pref = None
+                title = title_candidate
+                if pref_candidate:
+                    if _get_numbering_prefix(pref_candidate) is not None or pref_candidate.replace('.', '').isdigit():
+                        pref = pref_candidate
+                    else:
+                        title = pref_candidate + " " + title_candidate
+                        
+                title = _clean_toc_title(title)
+                entries.append({
+                    "prefix": pref,
+                    "title": title,
+                    "page_str": pg_str,
+                    "x0": x0
+                })
+                i += 1
+                continue
+            
+            # Triple check
+            if i + 2 < len(lines):
+                prefix_candidate = lines[i]["text"]
+                title_candidate = lines[i+1]["text"]
+                page_candidate = lines[i+2]["text"]
+                
+                is_pref = _get_numbering_prefix(prefix_candidate) is not None or prefix_candidate.replace('.', '').isdigit()
+                is_page = page_num_pattern.match(page_candidate) is not None
+                
+                if is_pref and is_page and not page_num_pattern.match(title_candidate):
+                    entries.append({
+                        "prefix": prefix_candidate,
+                        "title": _clean_toc_title(title_candidate),
+                        "page_str": page_candidate,
+                        "x0": lines[i+1]["x0"]
+                    })
+                    i += 3
+                    continue
+            
+            # Pair check
+            if i + 1 < len(lines):
+                title_candidate = lines[i]["text"]
+                page_candidate = lines[i+1]["text"]
+                
+                is_page = page_num_pattern.match(page_candidate) is not None
+                
+                if is_page and not page_num_pattern.match(title_candidate):
+                    pref = None
+                    title_clean = title_candidate
+                    pref_match = re.match(r'^([A-Za-z0-9\.]+)\s+', title_clean)
+                    if pref_match and _get_numbering_prefix(pref_match.group(1)) is not None:
+                        pref = pref_match.group(1)
+                        title_clean = title_clean[len(pref):].strip()
+                    entries.append({
+                        "prefix": pref,
+                        "title": _clean_toc_title(title_clean),
+                        "page_str": page_candidate,
+                        "x0": lines[i]["x0"]
+                    })
+                    i += 2
+                    continue
+            
+            # Check for chapter-like lines without a page number
+            if division_pattern.match(token) or token.strip().lower().startswith("chapter"):
+                pref = None
+                title_clean = token
+                pref_match = re.match(r'^([A-Za-z0-9\.]+)\s+', title_clean)
+                if pref_match and _get_numbering_prefix(pref_match.group(1)) is not None:
+                    pref = pref_match.group(1)
+                    title_clean = title_clean[len(pref):].strip()
+                
+                entries.append({
+                    "prefix": pref,
+                    "title": _clean_toc_title(title_clean),
+                    "page_str": None,
+                    "x0": x0
+                })
+                i += 1
+                continue
+            
+            i += 1
+
+    # Group X0 positions to determine levels
+    if entries:
+        x0_values = sorted(list(set(round(e["x0"], 1) for e in entries)))
+        grouped_x0 = []
+        for x in x0_values:
+            found = False
+            for group in grouped_x0:
+                if abs(x - group[0]) <= 3.0:
+                    group.append(x)
+                    found = True
+                    break
+            if not found:
+                grouped_x0.append([x])
+                
+        x0_to_level = {}
+        for idx, group in enumerate(grouped_x0):
+            level = idx + 1
+            for val in group:
+                x0_to_level[val] = level
+                
+        for e in entries:
+            e["level"] = x0_to_level[round(e["x0"], 1)]
+            
+    return entries
+
+
+def _normalize_title_for_matching(text: str) -> str:
+    """Normalize heading titles for lookup matching against TOC."""
+    text = text.strip().lower()
+    # Remove numbering prefixes at the start
+    text = re.sub(r'^(?:[0-9]+(?:\.[0-9]+)*|[a-z](?:\.[0-9]+)*|[ivxlcdm]+(?:\.[0-9]+)*)\s+', '', text)
+    # Remove division words at the start
+    text = re.sub(r'^' + DIVISION_WORDS + r'\.?\s+', '', text, flags=re.IGNORECASE)
+    # Remove all non-alphanumeric characters
+    text = re.sub(r'[^a-z0-9]', '', text)
+    return text
+
+
+def _filter_headings_with_toc(headings: List[Dict], toc_entries: List[Dict]) -> List[Dict]:
+    """Filter candidates using Table of Contents data to eliminate metadata and noise, and assign levels."""
+    if not toc_entries:
+        return headings
+
+    toc_by_norm_title = {}
+    for entry in toc_entries:
+        norm = _normalize_title_for_matching(entry["title"])
+        if norm:
+            toc_by_norm_title.setdefault(norm, []).append(entry)
+            
+    toc_by_prefix = {}
+    for entry in toc_entries:
+        if entry["prefix"]:
+            toc_by_prefix.setdefault(entry["prefix"], []).append(entry)
+
+    SPECIAL_UNNUMBERED = {
+        "contents", "table of contents", "indhold", "innhold", "innholdsfortegnelse", "indholdsfortegnelse",
+        "preface", "foreword", "forord",
+        "introduction", "innledning", "introduksjon",
+        "conclusion", "konklusjon",
+        "references", "bibliography", "litteratur", "bibliografi",
+        "index", "indeks", "stikkordregister", "register",
+        "acknowledgements", "takk", "anerkjennelse",
+        "abstract", "sammendrag", "summary",
+        "appendix", "vedlegg", "tillegg",
+        "inhaltsverzeichnis", "inhalt", "vorwort", "einleitung", "fazit", "schlussfolgerung", "literaturverzeichnis", "literatur", "index", "anhang",
+        "table des matières", "sommaire", "préface", "introduction", "conclusion", "références", "bibliographie", "index", "annexe",
+        "índice", "indice", "tabla de contenido", "prólogo", "prologo", "introducción", "introduccion", "conclusión", "conclusion", "referencias", "bibliografía", "bibliografia", "anexo", "apéndice", "apendice",
+        "prefazione", "sezione", "bibliografia", "appendice"
+    }
+
+    filtered = []
+    for h in headings:
+        title = h["title"]
+        norm_h = _normalize_title_for_matching(title)
+        
+        matched_entry = None
+        if norm_h in toc_by_norm_title:
+            matched_entry = toc_by_norm_title[norm_h][0]
+            
+        if not matched_entry:
+            pref_match = re.match(r'^([A-Za-z0-9\.]+)\s+', title)
+            pref = pref_match.group(1) if pref_match and _get_numbering_prefix(pref_match.group(1)) else None
+            if pref and pref in toc_by_prefix:
+                for entry in toc_by_prefix[pref]:
+                    norm_entry = _normalize_title_for_matching(entry["title"])
+                    if norm_h in norm_entry or norm_entry in norm_h:
+                        matched_entry = entry
+                        break
+                        
+        if matched_entry:
+            if "level" in matched_entry:
+                h["level"] = matched_entry["level"]
+            filtered.append(h)
+            continue
+            
+        title_lower = title.lower()
+        has_page_num = re.search(r'(^\d+\s+|\s+\d+$)', title)
+        if not has_page_num and any(word in title_lower for word in SPECIAL_UNNUMBERED):
+            # Try to assign level from corresponding entry in TOC if possible
+            for norm, entries in toc_by_norm_title.items():
+                if norm_h in norm or norm in norm_h:
+                    if "level" in entries[0]:
+                        h["level"] = entries[0]["level"]
+                    break
+            filtered.append(h)
+            continue
+            
+    return filtered
+
+
 def detect_headings(pdf_path: str, max_levels: int = 6) -> List[Dict]:
     """
     Scan a PDF and infer headings using a two-phase approach.
 
     Algorithm:
-        1. Extract every text span with (font_size, is_bold, text, page, y_pos).
-        2. Identify the "body" font size as the size carrying the most characters.
-        3. Keep spans matching candidate heading styles (larger or bold body size).
-        4. Remove repeated headers/footers.
-        5. Merge adjacent same-style spans on the same line.
-        6. Filter out short or purely numeric lines (page numbers).
-        7. Build a font-size/style level map.
-        8. Two-phase level assignment:
-           a. If the document uses a numbering scheme (>= 40% of heading candidates
-              have number prefixes), use numbering as the primary hierarchy signal.
-           b. Otherwise, use font-size/bold ranking exclusively.
-        9. Sanitize levels (no jumps > 1, no stair-steps).
+        1. Parse the Table of Contents (TOC) if present.
+        2. Extract every text span with (font_size, is_bold, text, page, y_pos).
+        3. Identify the "body" font size as the size carrying the most characters.
+        4. Keep spans matching candidate heading styles (larger or bold body size).
+        5. Remove repeated headers/footers.
+        6. Merge adjacent same-style spans on the same line.
+        7. Filter out short or purely numeric lines (page numbers).
+        8. Filter candidates against the parsed TOC.
     """
     doc = fitz.open(pdf_path)
     try:
+        toc_pages = _find_toc_pages(doc)
+        toc_entries = _extract_toc_entries(doc, toc_pages) if toc_pages else []
         spans = _extract_spans(doc)
         page_count = doc.page_count
     finally:
@@ -156,21 +439,17 @@ def detect_headings(pdf_path: str, max_levels: int = 6) -> List[Dict]:
 
     lines = _merge_spans_into_lines(heading_spans)
     merged_lines = _merge_multiline_headings(lines)
-    filtered_lines = _filter_heading_lines(merged_lines)
+    filtered_lines = _filter_heading_lines(merged_lines, page_count)
 
     if not filtered_lines:
         return []
 
     # Identify TOC pages and filter them out (keep only TOC titles)
-    toc_pages = set()
-    for line in filtered_lines:
-        t_lower = line["text"].strip().lower()
-        if t_lower in ["indhold", "contents", "table of contents", "innhold", "innholdsfortegnelse", "indholdsfortegnelse"]:
-            toc_pages.add(line["page"])
+    toc_pages_set = set(toc_pages) if 'toc_pages' in locals() else set()
 
     final_lines = []
     for line in filtered_lines:
-        if line["page"] in toc_pages:
+        if line["page"] in toc_pages_set:
             t_lower = line["text"].strip().lower()
             if t_lower in ["indhold", "contents", "table of contents", "innhold", "innholdsfortegnelse", "indholdsfortegnelse"]:
                 final_lines.append(line)
@@ -202,22 +481,84 @@ def detect_headings(pdf_path: str, max_levels: int = 6) -> List[Dict]:
     has_numbering = _has_numbering_scheme(final_lines)
 
     if has_numbering:
-        # When the document uses numbered headings, unnumbered entries at the
-        # weakest (highest-number) style level are almost always noise:
-        # bold body text, table headers, figure captions, etc.  Remove them
-        # so the bookmark tree stays clean.
-        # Only filter out if the weakest style level is deep/weak enough (e.g. style_lvl > 2)
-        # to avoid filtering out valid section headings in simple/short documents.
-        if level_map:
-            weakest_style_lvl = max(level_map.values())
-            if weakest_style_lvl > 2:
-                headings = [
-                    h for h in headings
-                    if h["num_lvl"] is not None or h["style_lvl"] < weakest_style_lvl
-                ]
+        SPECIAL_UNNUMBERED = {
+            "contents", "table of contents", "indhold", "innhold", "innholdsfortegnelse", "indholdsfortegnelse",
+            "preface", "foreword", "forord",
+            "introduction", "innledning", "introduksjon",
+            "conclusion", "konklusjon",
+            "references", "bibliography", "litteratur", "bibliografi",
+            "index", "indeks", "stikkordregister", "register",
+            "acknowledgements", "takk", "anerkjennelse",
+            "abstract", "sammendrag", "summary",
+            "appendix", "vedlegg", "tillegg"
+        }
+        
+        # Step 1: Sequence DP to clean up outliers
+        numbered_indices = []
+        prefixes = []
+        for i, h in enumerate(headings):
+            pref_str = _get_numbering_prefix(h["title"])
+            pref_tup = _parse_prefix_to_tuple(pref_str) if pref_str else None
+            if pref_tup:
+                numbered_indices.append(i)
+                prefixes.append(pref_tup)
+
+        n_pref = len(prefixes)
+        if n_pref > 0:
+            dp = [1] * n_pref
+            parent = [-1] * n_pref
+            for i in range(n_pref):
+                for j in range(i):
+                    if _is_valid_sequence_transition(prefixes[j], prefixes[i]):
+                        if dp[j] + 1 > dp[i]:
+                            dp[i] = dp[j] + 1
+                            parent[i] = j
+
+            max_len = max(dp)
+            max_idx = dp.index(max_len)
+
+            curr = max_idx
+            chosen_indices = []
+            while curr != -1:
+                chosen_indices.append(curr)
+                curr = parent[curr]
+            chosen_indices.reverse()
+
+            chosen_set = set(numbered_indices[idx] for idx in chosen_indices)
+        else:
+            chosen_set = set()
+
+        # Step 2: Keep only numbered headings that are in the chosen subsequence,
+        # OR unnumbered headings that are in the SPECIAL_UNNUMBERED list, provided they
+        # don't start or end with a number (running headers/footers).
+        # However, if the document is only partially numbered (ratio <= 0.80),
+        # we don't strictly filter out other unnumbered headings.
+        total_numbered_candidates = sum(1 for h in headings if _get_numbering_prefix(h["title"]) is not None)
+        numbered_ratio = total_numbered_candidates / len(headings) if headings else 0.0
+
+        filtered_headings = []
+        for i, h in enumerate(headings):
+            pref_str = _get_numbering_prefix(h["title"])
+            if pref_str:
+                if i in chosen_set:
+                    filtered_headings.append(h)
+            else:
+                title_lower = h["title"].lower()
+                has_page_num = re.search(r'(^\d+\s+|\s+\d+$)', h["title"])
+                if not has_page_num:
+                    if numbered_ratio > 0.80:
+                        if any(word in title_lower for word in SPECIAL_UNNUMBERED):
+                            filtered_headings.append(h)
+                    else:
+                        filtered_headings.append(h)
+        headings = filtered_headings
         _assign_levels_by_numbering(headings)
     else:
         _assign_levels_by_style(headings)
+
+    # Apply TOC-based filtering if TOC entries were found
+    if 'toc_entries' in locals() and toc_entries:
+        headings = _filter_headings_with_toc(headings, toc_entries)
 
     # Nest under document title logic
     if headings:
@@ -257,6 +598,79 @@ def detect_headings(pdf_path: str, max_levels: int = 6) -> List[Dict]:
                 headings = new_headings
 
     return headings
+
+
+# ---------------------------------------------------------------------------
+# Sequence DP validation helpers
+# ---------------------------------------------------------------------------
+
+def _roman_to_int(s: str) -> Optional[int]:
+    """Helper to convert a Roman numeral string to an integer."""
+    s = s.upper()
+    roman_map = {'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000}
+    if not all(c in roman_map for c in s):
+        return None
+    val = 0
+    prev_val = 0
+    for char in reversed(s):
+        curr_val = roman_map[char]
+        if curr_val >= prev_val:
+            val += curr_val
+        else:
+            val -= curr_val
+        prev_val = curr_val
+    return val
+
+
+def _parse_prefix_to_tuple(prefix: str) -> Optional[Tuple[int, ...]]:
+    """Helper to parse a prefix string (e.g. "2.1.3", "A", "IV") into a tuple of integers."""
+    if not prefix:
+        return None
+    parts = prefix.split('.')
+    result = []
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if part.isdigit():
+            result.append(int(part))
+        else:
+            if len(part) == 1 and part.isalpha():
+                result.append(ord(part.lower()) - ord('a') + 1)
+            else:
+                val = _roman_to_int(part)
+                if val is not None:
+                    result.append(val)
+                else:
+                    return None
+    return tuple(result) if result else None
+
+
+def _is_valid_sequence_transition(prev_tup: Tuple[int, ...], curr_tup: Tuple[int, ...]) -> bool:
+    """
+    Check if transitioning from prev_tup to curr_tup is a valid step in a numbered sequence.
+    """
+    if curr_tup == (1,):
+        return True
+    p = len(prev_tup)
+    q = len(curr_tup)
+    
+    # Descendant/Child transition
+    if q > p and curr_tup[:p] == prev_tup:
+        return all(x == 1 for x in curr_tup[p:])
+        
+    limit = min(p, q)
+    diff_idx = -1
+    for i in range(limit):
+        if curr_tup[i] != prev_tup[i]:
+            diff_idx = i
+            break
+            
+    if diff_idx != -1:
+        if curr_tup[diff_idx] == prev_tup[diff_idx] + 1:
+            return all(x == 1 for x in curr_tup[diff_idx + 1:])
+            
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -499,12 +913,13 @@ def _filter_heading_spans(spans: List[Dict], body_size: float, body_is_bold: boo
     return candidates
 
 
-def _filter_heading_lines(lines: List[Dict]) -> List[Dict]:
+def _filter_heading_lines(lines: List[Dict], total_pages: Optional[int] = None) -> List[Dict]:
     """
     Filter out merged lines that:
         - Are shorter than 3 characters (e.g. solitary bullets, page numbers)
         - Are purely numeric (e.g. page numbers like "42")
         - Have an average word length <= 2.0 (likely math equations or variables)
+        - Are Table of Contents entries referencing future pages
     """
     filtered = []
     for line in lines:
@@ -524,6 +939,14 @@ def _filter_heading_lines(lines: List[Dict]) -> List[Dict]:
                 continue
         else:
             continue
+
+        # TOC line heuristic: ends with a number P where current_page < P <= total_pages
+        if total_pages is not None:
+            toc_match = re.search(r'\s+(\d+)$', text)
+            if toc_match:
+                page_val = int(toc_match.group(1))
+                if line["page"] < page_val <= total_pages:
+                    continue
 
         filtered.append(line)
     return filtered
@@ -621,8 +1044,16 @@ def _is_only_prefix(text: str) -> bool:
     if re.match(valid_prefix_pattern, text):
         return True
 
-    word_prefix_pattern = r'^[A-Za-z]+\.?\s+(?:[0-9]+(?:\.[0-9]+)*|[A-Za-z](?:\.[0-9]+)*|[IVXLCDMivxlcdm]+(?:\.[0-9]+)*)$'
-    if re.match(word_prefix_pattern, text):
+    division_words = (
+        r'(?:chapter|section|subsection|subsubsection|appendix|part|volume|book|'
+        r'kapitel|kapittel|kap|seksjon|del|vedlegg|tillegg|avsnitt|underavsnitt|underseksjon|bilaga|'
+        r'abschnitt|anhang|teil|band|buch|'
+        r'chapitre|annexe|partie|livre|'
+        r'capítulo|capitulo|sección|seccion|anexo|apéndice|apendice|volumen|libro|'
+        r'capitolo|sezione|appendice|sommario)'
+    )
+    word_prefix_pattern = r'^' + division_words + r'\.?\s+(?:[0-9]+(?:\.[0-9]+)*|[A-Za-z](?:\.[0-9]+)*|[IVXLCDMivxlcdm]+(?:\.[0-9]+)*)$'
+    if re.match(word_prefix_pattern, text, re.IGNORECASE):
         return True
 
     return False
@@ -632,6 +1063,9 @@ def _merge_multiline_headings(lines: list) -> list:
     """
     Merge consecutive heading lines on the same page if they share the same style
     and are visually close vertically, provided the next line is not itself numbered.
+    
+    If the first line is only a numbering prefix, we allow merging even if the
+    styles differ, keeping the style parameters of the larger line.
     """
     if not lines:
         return []
@@ -668,8 +1102,14 @@ def _merge_multiline_headings(lines: list) -> list:
         # Second line must not start with a numbering prefix
         is_second_numbered = get_numbering_level(next_line["text"]) is not None
 
-        if same_page and same_style and small_gap and not is_second_numbered:
+        if same_page and (same_style or _is_only_prefix(current["text"])) and small_gap and not is_second_numbered:
             current["text"] += " " + next_line["text"]
+            if next_line["size"] > current["size"]:
+                current["size"] = next_line["size"]
+                current["bold"] = next_line["bold"]
+                current["font"] = next_line.get("font", "")
+            elif next_line["size"] == current["size"]:
+                current["bold"] = current["bold"] or next_line["bold"]
             last_y = next_line["y"]
         else:
             merged.append(current)

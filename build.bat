@@ -51,21 +51,53 @@ if exist "build" rd /s /q "build"
 echo Done cleaning.
 echo.
 
+REM Prepare build metadata
+echo Fetching Git commit hash and build date...
+set "COMMIT_HASH="
+for /f %%i in ('git rev-parse --short HEAD 2^>nul') do set "COMMIT_HASH=%%i"
+if "%COMMIT_HASH%"=="" set "COMMIT_HASH=unknown"
+
+set "BUILD_DATE="
+for /f %%i in ('%VENV_DIR%\Scripts\python.exe -c "import datetime; print(datetime.date.today().isoformat())" 2^>nul') do set "BUILD_DATE=%%i"
+if "%BUILD_DATE%"=="" set "BUILD_DATE=unknown"
+
+echo Commit Hash: %COMMIT_HASH%
+echo Build Date: %BUILD_DATE%
+echo.
+
+REM Create backup of version.py
+if exist "source\version.py" (
+    copy /y "source\version.py" "source\version.py.bak" >nul
+)
+
+REM Overwrite version.py with build info
+(
+echo __version__ = "0.1.0"
+echo __build__ = "%COMMIT_HASH%"
+echo __build_date__ = "%BUILD_DATE%"
+) > "source\version.py"
+
 echo Starting PyInstaller... Please wait, this might take a while.
 echo Command: "%VENV_PYINSTALLER%" --clean --noconfirm "%SPEC_FILE%"
 echo ------------------------------------------------------------
 
 REM Run PyInstaller using the full path from the venv
 call "%VENV_PYINSTALLER%" --clean --noconfirm "%SPEC_FILE%"
+set "BUILD_ERROR=%errorlevel%"
+
+REM Restore original version.py from backup
+if exist "source\version.py.bak" (
+    move /y "source\version.py.bak" "source\version.py" >nul
+)
 
 REM Check the result
-if %errorlevel% neq 0 (
+if %BUILD_ERROR% neq 0 (
     echo ------------------------------------------------------------
-    echo ERROR: PyInstaller failed with error code %errorlevel%!
+    echo ERROR: PyInstaller failed with error code %BUILD_ERROR%!
     echo Please check the output above for specific errors.
     echo ------------------------------------------------------------
     pause
-    exit /b %errorlevel%
+    exit /b %BUILD_ERROR%
 )
 
 echo ------------------------------------------------------------

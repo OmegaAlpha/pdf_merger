@@ -20,6 +20,15 @@ def main():
     try:
         app = QApplication(sys.argv)
         
+        # Set explicit AppUserModelID on Windows to ensure custom taskbar icon is used
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                myappid = "pdfmerger.app.0.1.0"
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+            except Exception:
+                pass
+        
         from PySide6.QtWidgets import QStyleFactory
         app.setStyle(QStyleFactory.create("Fusion"))
         
