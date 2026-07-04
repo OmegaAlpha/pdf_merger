@@ -60,10 +60,10 @@ if exist "source\version.py" (
 
 REM Overwrite version.py with build info
 (
-echo __version__ = "0.1.0"
+echo __version__ = "0.2.0"
 echo __build__ = "%COMMIT_HASH%"
 echo __build_date__ = "%BUILD_DATE%"
-) > "source\version.py"
+) > "source/version.py"
 
 echo Starting Nuitka Compilation... Please wait, this WILL take a long time!
 echo Command: "%VENV_PYTHON%" -m nuitka --msvc=latest --low-memory --standalone --windows-console-mode=disable --enable-plugin=pyside6 --nofollow-import-to=pymupdf --nofollow-import-to=fitz --include-data-dir=translations=translations --include-data-files=source/style_dark.qss=source/style_dark.qss --include-data-files=source/style_light.qss=source/style_light.qss --include-data-files=source/bookmark.svg=source/bookmark.svg --include-data-files=source/bookmark_linked.svg=source/bookmark_linked.svg --include-data-files=source/checkmark.svg=source/checkmark.svg --include-data-files=source/app_icon.png=source/app_icon.png --windows-icon-from-ico=source/app_icon.ico --output-dir=nuitka_build --output-filename=PDFMerger.exe source/main.py

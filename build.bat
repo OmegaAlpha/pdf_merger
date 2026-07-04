@@ -72,7 +72,7 @@ if exist "source\version.py" (
 
 REM Overwrite version.py with build info
 (
-echo __version__ = "0.1.0"
+echo __version__ = "0.2.0"
 echo __build__ = "%COMMIT_HASH%"
 echo __build_date__ = "%BUILD_DATE%"
 ) > "source\version.py"

@@ -18,7 +18,7 @@ from typing import List, Dict, Tuple, Optional
 
 
 DIVISION_WORDS = (
-    r'(?:chapter|section|subsection|subsubsection|appendix|part|volume|book|'
+    r'(?:chapter|section|subsection|subsubsection|appendix|appendiks|part|volume|book|'
     r'kapitel|kapittel|kap|seksjon|del|vedlegg|tillegg|avsnitt|underavsnitt|underseksjon|bilaga|'
     r'abschnitt|anhang|teil|band|buch|'
     r'chapitre|annexe|partie|livre|'
@@ -123,7 +123,11 @@ def _find_toc_pages(doc) -> List[int]:
         curr_page = first_toc_page + 1
         while curr_page <= min(15, doc.page_count):
             entries = _extract_toc_entries(doc, [curr_page])
-            if len(entries) >= 3:
+            p = doc.load_page(curr_page - 1)
+            p_lines = p.get_text().strip().split('\n')
+            total_lines_on_page = len([l for l in p_lines if l.strip()])
+            
+            if len(entries) >= 3 and (total_lines_on_page == 0 or len(entries) >= total_lines_on_page * 0.25):
                 toc_pages.append(curr_page)
                 curr_page += 1
             else:
@@ -155,14 +159,62 @@ def _extract_toc_entries(doc, toc_pages: List[int]) -> List[Dict]:
         page = doc.load_page(page_num - 1)
         raw_dict = page.get_text("dict")
         
-        lines = []
+        # Extract all spans on the page
+        spans = []
         for block in raw_dict.get("blocks", []):
             if block.get("type") != 0:
                 continue
             for line in block.get("lines", []):
-                text = "".join(s["text"] for s in line.get("spans", []))
-                x0 = line["bbox"][0]
-                lines.append({"text": text.strip(), "x0": x0})
+                line_y = line.get("bbox", [0, 0, 0, 0])[1]
+                for span in line.get("spans", []):
+                    if "origin" in span:
+                        y_pos = span["origin"][1]
+                    elif "bbox" in span:
+                        y_pos = span["bbox"][1]
+                    else:
+                        y_pos = line_y
+                        
+                    clean_text = _clean_ligatures(span["text"])
+                    spans.append({
+                        "text": clean_text,
+                        "x0": span.get("bbox", [0, 0, 0, 0])[0],
+                        "x1": span.get("bbox", [0, 0, 0, 0])[2],
+                        "y": y_pos,
+                    })
+
+        # Sort spans by y-coordinate first, then by x0
+        spans.sort(key=lambda s: (s["y"], s["x0"]))
+
+        # Merge spans on the same line (y difference <= 2.0)
+        lines = []
+        if spans:
+            current = {
+                "text": spans[0]["text"],
+                "y": spans[0]["y"],
+                "x0": spans[0]["x0"],
+                "x1": spans[0]["x1"]
+            }
+            for s in spans[1:]:
+                if abs(s["y"] - current["y"]) <= 2.0:
+                    gap = s["x0"] - current["x1"]
+                    if gap > 2.0 and not current["text"].endswith(" ") and not s["text"].startswith(" "):
+                        current["text"] += " " + s["text"]
+                    else:
+                        current["text"] += s["text"]
+                    current["x1"] = max(current["x1"], s["x1"])
+                else:
+                    current["text"] = current["text"].strip()
+                    if current["text"]:
+                        lines.append(current)
+                    current = {
+                        "text": s["text"],
+                        "y": s["y"],
+                        "x0": s["x0"],
+                        "x1": s["x1"]
+                    }
+            current["text"] = current["text"].strip()
+            if current["text"]:
+                lines.append(current)
                 
         i = 0
         while i < len(lines):
@@ -325,7 +377,7 @@ def _filter_headings_with_toc(headings: List[Dict], toc_entries: List[Dict]) -> 
         "index", "indeks", "stikkordregister", "register",
         "acknowledgements", "takk", "anerkjennelse",
         "abstract", "sammendrag", "summary",
-        "appendix", "vedlegg", "tillegg",
+        "appendix", "appendiks", "vedlegg", "tillegg",
         "inhaltsverzeichnis", "inhalt", "vorwort", "einleitung", "fazit", "schlussfolgerung", "literaturverzeichnis", "literatur", "index", "anhang",
         "table des matières", "sommaire", "préface", "introduction", "conclusion", "références", "bibliographie", "index", "annexe",
         "índice", "indice", "tabla de contenido", "prólogo", "prologo", "introducción", "introduccion", "conclusión", "conclusion", "referencias", "bibliografía", "bibliografia", "anexo", "apéndice", "apendice",
@@ -817,11 +869,22 @@ def _assign_levels_by_style(headings: List[Dict]) -> None:
 
 def _clean_ligatures(text: str) -> str:
     """Replace TeX/OT1 ligature control characters with their corresponding character pairs."""
-    text = text.replace("\x1b", "ff")
-    text = text.replace("\x1c", "fi")
-    text = text.replace("\x1d", "fl")
-    text = text.replace("\x1e", "ffi")
-    text = text.replace("\x1f", "ffl")
+    replacements = {
+        "\ufb00": "ff",
+        "\ufb01": "fi",
+        "\ufb02": "fl",
+        "\ufb03": "ffi",
+        "\ufb04": "ffl",
+        "\ufb05": "ft",
+        "\ufb06": "st",
+        "\x1b": "ff",
+        "\x1c": "fi",
+        "\x1d": "fl",
+        "\x1e": "ffi",
+        "\x1f": "ffl",
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
     return text
 
 
@@ -850,6 +913,8 @@ def _extract_spans(doc) -> List[Dict]:
 
                     # y-position: use the origin y of the span for ordering
                     y_pos = span.get("origin", [0, 0])[1] if "origin" in span else span.get("bbox", [0, 0, 0, 0])[1]
+                    x_pos = span.get("origin", [0, 0])[0] if "origin" in span else span.get("bbox", [0, 0, 0, 0])[0]
+                    x1_pos = span.get("bbox", [0, 0, 0, 0])[2]
 
                     spans.append({
                         "text": text,
@@ -858,6 +923,8 @@ def _extract_spans(doc) -> List[Dict]:
                         "font": span.get("font", ""),
                         "page": page_idx + 1,  # 1-based
                         "y": round(y_pos, 1),
+                        "x0": x_pos,
+                        "x1": x1_pos,
                     })
     return spans
 
@@ -987,8 +1054,8 @@ def _merge_spans_into_lines(spans: List[Dict]) -> List[Dict]:
     if not spans:
         return []
 
-    # Sort by document order: page, then y-position
-    sorted_spans = sorted(spans, key=lambda s: (s["page"], s["y"]))
+    # Sort by document order: page, then y-position, then horizontal position x0
+    sorted_spans = sorted(spans, key=lambda s: (s["page"], s["y"], s.get("x0", 0.0)))
 
     lines = []
     current = {
@@ -998,6 +1065,8 @@ def _merge_spans_into_lines(spans: List[Dict]) -> List[Dict]:
         "size": sorted_spans[0]["size"],
         "bold": sorted_spans[0]["bold"],
         "font": sorted_spans[0].get("font", ""),
+        "x0": sorted_spans[0].get("x0", 0.0),
+        "x1": sorted_spans[0].get("x1", sorted_spans[0].get("x0", 0.0)),
     }
 
     Y_TOLERANCE = 2.0  # points — spans within this vertical distance are on the same line
@@ -1008,8 +1077,13 @@ def _merge_spans_into_lines(spans: List[Dict]) -> List[Dict]:
         same_style = span["size"] == current["size"] and span["bold"] == current["bold"] and span.get("font", "") == current["font"]
 
         if same_page and same_y and same_style:
-            # Merge: append text
-            current["text"] += " " + span["text"]
+            # Check gap and insert space if needed
+            gap = span["x0"] - current["x1"]
+            if gap > 2.0 and not current["text"].endswith(" ") and not span["text"].startswith(" "):
+                current["text"] += " " + span["text"]
+            else:
+                current["text"] += span["text"]
+            current["x1"] = max(current["x1"], span.get("x1", span["x0"]))
         else:
             # Flush previous line
             current["text"] = current["text"].strip()
@@ -1022,6 +1096,8 @@ def _merge_spans_into_lines(spans: List[Dict]) -> List[Dict]:
                 "size": span["size"],
                 "bold": span["bold"],
                 "font": span.get("font", ""),
+                "x0": span.get("x0", 0.0),
+                "x1": span.get("x1", span["x0"]),
             }
 
     # Flush last line
