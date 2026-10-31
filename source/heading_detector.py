@@ -658,6 +658,8 @@ def detect_headings(pdf_path: str, max_levels: int = 6) -> List[Dict]:
 
 def _roman_to_int(s: str) -> Optional[int]:
     """Helper to convert a Roman numeral string to an integer."""
+    if not s:
+        return None
     s = s.upper()
     roman_map = {'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000}
     if not all(c in roman_map for c in s):
@@ -671,7 +673,7 @@ def _roman_to_int(s: str) -> Optional[int]:
         else:
             val -= curr_val
         prev_val = curr_val
-    return val
+    return val if val > 0 else None
 
 
 def _parse_prefix_to_tuple(prefix: str) -> Optional[Tuple[int, ...]]:
@@ -687,7 +689,14 @@ def _parse_prefix_to_tuple(prefix: str) -> Optional[Tuple[int, ...]]:
         if part.isdigit():
             result.append(int(part))
         else:
-            if len(part) == 1 and part.isalpha():
+            # Roman numerals I, V, X represent 1, 5, 10
+            if part.upper() in ("I", "V", "X"):
+                val = _roman_to_int(part)
+                if val is not None:
+                    result.append(val)
+                else:
+                    return None
+            elif len(part) == 1 and part.isalpha():
                 result.append(ord(part.lower()) - ord('a') + 1)
             else:
                 val = _roman_to_int(part)
@@ -942,6 +951,9 @@ def _identify_body_style(spans: List[Dict]) -> Tuple[float, bool, str]:
     for span in spans:
         char_counts[span["size"]] += len(span["text"])
 
+    if not char_counts or sum(char_counts.values()) == 0:
+        return 10.0, False, ""
+
     body_size = char_counts.most_common(1)[0][0]
 
     # Determine if the dominant variant at body_size is bold or not
@@ -1002,7 +1014,7 @@ def _filter_heading_lines(lines: List[Dict], total_pages: Optional[int] = None) 
         word_lens = [l for l in word_lens if l > 0]
         if word_lens:
             avg_len = sum(word_lens) / len(word_lens)
-            if avg_len <= 2.0:
+            if avg_len <= 1.5:
                 continue
         else:
             continue

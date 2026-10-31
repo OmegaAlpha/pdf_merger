@@ -371,3 +371,45 @@ def test_save_load_preserves_host_pdf(sample_pdfs, project_path):
     assert loaded_bm.host_pdf.name == sample_pdfs[1].name
 
 
+def test_save_project_with_point_in_global_toc(sample_pdfs, project_path):
+    """Verify that a BookmarkItem with fitz.Point in dest does not crash save_project."""
+    import fitz
+    from model import BookmarkItem
+    
+    bm = BookmarkItem(
+        title="Chapter with Point",
+        page=1,
+        level=1,
+        source_pdf=sample_pdfs[0],
+        dest={"kind": 1, "page": 0, "to": fitz.Point(100, 200), "zoom": 1.0}
+    )
+    
+    # Should not raise TypeError: Object of type Point is not JSON serializable
+    save_project(project_path, sample_pdfs, "", "out.pdf", [bm])
+    
+    result = load_project(project_path)
+    loaded_toc = result["global_toc"]
+    assert len(loaded_toc) == 1
+    assert loaded_toc[0].dest["to"] == [100.0, 200.0]
+
+
+def test_refresh_corrupted_file_sets_missing(tmp_path):
+    """Corrupted/unreadable files should be marked as missing."""
+    corrupt_file = tmp_path / "corrupt.pdf"
+    corrupt_file.write_bytes(b"NOT A REAL PDF CONTENT AT ALL")
+    
+    pdf = PDFDocument(
+        file_path=str(corrupt_file),
+        name="corrupt.pdf",
+        size_kb=1.0,
+        modified_dt=datetime.now(),
+        pages=1,
+        missing=False
+    )
+    
+    changes = refresh_pdf_metadata(pdf)
+    assert pdf.missing is True
+    assert len(changes) == 1
+    assert "error reading file" in changes[0]
+
+

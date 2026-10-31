@@ -64,16 +64,18 @@ def merge_pdfs_engine(pdf_list: List[PDFDocument], output_path: str, global_toc:
         if success_count > 0:
             if global_toc:
                 for bm in global_toc:
+                    if bm.source_pdf is None:
+                        continue
                     # Robust lookup for source_pdf's offset by identity, equality, or file_path comparison
                     offset = pdf_offsets.get(id(bm.source_pdf))
                     if offset is None:
                         for pdf_item in pdf_list:
-                            if pdf_item == bm.source_pdf or os.path.abspath(pdf_item.file_path) == os.path.abspath(bm.source_pdf.file_path):
-                                offset = pdf_offsets[id(pdf_item)]
+                            if pdf_item == bm.source_pdf or (bm.source_pdf.file_path and os.path.abspath(pdf_item.file_path) == os.path.abspath(bm.source_pdf.file_path)):
+                                offset = pdf_offsets.get(id(pdf_item))
                                 break
                                 
                     if offset is not None:
-                        abs_page = offset + bm.page
+                        abs_page = max(1, min(offset + bm.page, merged_doc.page_count))
                         if bm.dest:
                             dest = sanitize_dest_dict(bm.dest)
                             if dest.get("kind") in (fitz.LINK_GOTO, 4):
@@ -82,6 +84,8 @@ def merge_pdfs_engine(pdf_list: List[PDFDocument], output_path: str, global_toc:
                                     dest["kind"] = fitz.LINK_GOTO
                             if "to" in dest and isinstance(dest["to"], list) and len(dest["to"]) == 2:
                                 dest["to"] = fitz.Point(dest["to"][0], dest["to"][1])
+                            elif "to" not in dest or not isinstance(dest["to"], fitz.Point):
+                                dest["to"] = fitz.Point(0, 0)
                         else:
                             dest = {
                                 "kind": fitz.LINK_GOTO,

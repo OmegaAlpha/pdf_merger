@@ -77,7 +77,7 @@ def save_project(
                 "level": bm.level,
                 "pdf_index": pdf_idx,
                 "host_pdf_index": host_idx,
-                "dest": bm.dest
+                "dest": sanitize_dest_dict(bm.dest) if bm.dest else None,
             })
 
     project_data = {
@@ -255,6 +255,7 @@ def refresh_pdf_metadata(pdf: PDFDocument) -> List[str]:
             changes.append(QCoreApplication.translate("project_manager", "{0}: file no longer found").format(pdf.name))
         return changes
 
+    doc = None
     try:
         file_stats = os.stat(file_path)
         new_size_kb = file_stats.st_size / 1024.0
@@ -263,9 +264,18 @@ def refresh_pdf_metadata(pdf: PDFDocument) -> List[str]:
         doc = fitz.open(file_path)
         new_pages = doc.page_count
         doc.close()
+        doc = None
     except Exception as e:
+        pdf.missing = True
         changes.append(QCoreApplication.translate("project_manager", "{0}: error reading file — {1}").format(pdf.name, e))
         return changes
+    finally:
+        if doc is not None:
+            try:
+                if not getattr(doc, "is_closed", True):
+                    doc.close()
+            except Exception:
+                pass
 
     # Compare and collect changes
     if pdf.pages != new_pages:

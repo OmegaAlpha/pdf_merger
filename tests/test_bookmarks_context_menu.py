@@ -47,3 +47,29 @@ def test_bookmarks_context_menu_cancel_with_multiple_selected(qtbot, real_pdf, m
     
     # Verify that NO new bookmark is added (len should still be 2)
     assert len(vm.global_toc) == 2
+
+
+def test_bookmarks_arrow_page_parsing(qtbot, real_pdf):
+    """Verify that page strings with arrow prefix (e.g. '→ 5') are correctly parsed as int."""
+    vm = MainViewModel()
+    vm.add_pdfs([real_pdf])
+    qtbot.waitUntil(lambda: len(vm.pdf_list_model.pdfs) == 1, timeout=3000)
+
+    pane = BookmarksPane(vm)
+    pdf = vm.pdf_list_model.pdfs[0]
+
+    b1 = BookmarkItem("B1", 1, 1, pdf)
+    vm.global_toc = [b1]
+    vm.global_toc_changed.emit()
+
+    pdf_root = pane.tree.topLevelItem(0)
+    item_b1 = pdf_root.child(0)
+
+    # Simulate cross-pdf or formatted page display with arrow
+    item_b1.setText(1, "→ 5")
+
+    # Trigger sync to viewmodel
+    pane._sync_to_viewmodel()
+
+    assert vm.global_toc[0].page == 5
+

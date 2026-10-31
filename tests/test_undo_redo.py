@@ -284,3 +284,58 @@ def test_undo_action_dynamic_translation(qtbot):
             assert vm.undo_stack.undoText() == "Change Output Directory"
         finally:
             QCoreApplication.removeTranslator(translator)
+
+
+def test_generate_bookmarks_undo_dynamic_translation(qtbot, real_pdf, monkeypatch):
+    """Verify that generate_bookmarks_from_headings uses untranslated description key."""
+    import viewmodel
+    monkeypatch.setattr(viewmodel, "detect_headings", lambda path: [{"title": "Chapter 1", "page": 1, "level": 1}])
+    
+    vm = MainViewModel()
+    vm.add_pdfs([real_pdf])
+    qtbot.waitUntil(lambda: len(vm.pdf_list_model.pdfs) == 1, timeout=3000)
+    
+    vm.undo_stack.clear()
+    
+    # Generate bookmarks
+    vm.generate_bookmarks_from_headings(0)
+    
+    # Check that description_key is the untranslated key
+    cmd = vm.undo_stack.command(0)
+    assert cmd.description_key == "Generate Bookmarks"
+    assert cmd.context == "MainViewModel"
+
+
+def test_bookmarks_batch_move_boundary(qtbot, real_pdf):
+    """Verify that moving multiple bookmarks up when at index 0 does not move or scramble."""
+    from bookmarks_pane import BookmarksPane
+    vm = MainViewModel()
+    vm.add_pdfs([real_pdf])
+    qtbot.waitUntil(lambda: len(vm.pdf_list_model.pdfs) == 1, timeout=3000)
+    
+    pane = BookmarksPane(vm)
+    pdf = vm.pdf_list_model.pdfs[0]
+    
+    b1 = BookmarkItem("B1", 1, 1, pdf)
+    b2 = BookmarkItem("B2", 1, 1, pdf)
+    b3 = BookmarkItem("B3", 1, 1, pdf)
+    vm.global_toc = [b1, b2, b3]
+    vm.global_toc_changed.emit()
+    vm.undo_stack.clear()
+    
+    pdf_root = pane.tree.topLevelItem(0)
+    item_b1 = pdf_root.child(0)
+    item_b2 = pdf_root.child(1)
+    
+    # Select both B1 and B2 (B1 is at index 0)
+    item_b1.setSelected(True)
+    item_b2.setSelected(True)
+    
+    # Try to move them up
+    pane._move_items_up()
+    
+    # Order must remain B1, B2, B3 without scrambling
+    assert pdf_root.child(0).text(0) == "B1"
+    assert pdf_root.child(1).text(0) == "B2"
+    assert pdf_root.child(2).text(0) == "B3"
+    assert not vm.undo_stack.canUndo()

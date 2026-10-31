@@ -881,6 +881,8 @@ class MainWindow(QMainWindow):
             return
 
         dest_filename = self.output_name.text().strip() or self.tr("merged_output.pdf")
+        if not dest_filename.lower().endswith(".pdf"):
+            dest_filename += ".pdf"
         output_path = os.path.join(self.vm.output_dir, dest_filename)
 
         if os.path.exists(output_path):

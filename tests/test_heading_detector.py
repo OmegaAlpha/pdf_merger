@@ -987,4 +987,62 @@ class TestEnhancedHeuristics:
         assert entries[2]["title"] == "Implementation"
         assert entries[2]["page_str"] == "1-2"
 
+    def test_roman_numeral_parsing_and_sequence(self):
+        from heading_detector import _parse_prefix_to_tuple, _is_valid_sequence_transition, _roman_to_int
+        # Test _roman_to_int
+        assert _roman_to_int("") is None
+        assert _roman_to_int("I") == 1
+        assert _roman_to_int("IV") == 4
+        assert _roman_to_int("V") == 5
+        assert _roman_to_int("IX") == 9
+        assert _roman_to_int("X") == 10
+        assert _roman_to_int("XI") == 11
+
+        # Test single letter Roman numerals parse to 1, 5, 10
+        assert _parse_prefix_to_tuple("I") == (1,)
+        assert _parse_prefix_to_tuple("V") == (5,)
+        assert _parse_prefix_to_tuple("X") == (10,)
+        assert _parse_prefix_to_tuple("II") == (2,)
+        assert _parse_prefix_to_tuple("IV") == (4,)
+        assert _parse_prefix_to_tuple("VI") == (6,)
+
+        # Test sequence transitions I through XI
+        roman_tokens = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI"]
+        tuples = [_parse_prefix_to_tuple(tok) for tok in roman_tokens]
+        assert tuples == [(1,), (2,), (3,), (4,), (5,), (6,), (7,), (8,), (9,), (10,), (11,)]
+
+        for i in range(len(tuples) - 1):
+            assert _is_valid_sequence_transition(tuples[i], tuples[i + 1]) is True
+
+    def test_short_acronym_headings_preserved(self):
+        from heading_detector import _filter_heading_lines
+        lines = [
+            {"text": "1. AI", "page": 1, "y": 100.0, "size": 18.0, "bold": True},
+            {"text": "1.1 UI & UX", "page": 1, "y": 120.0, "size": 16.0, "bold": True},
+            {"text": "2. QA", "page": 2, "y": 100.0, "size": 18.0, "bold": True},
+            {"text": "3. ML", "page": 2, "y": 140.0, "size": 18.0, "bold": True},
+            {"text": "K v r", "page": 2, "y": 160.0, "size": 18.0, "bold": False}, # math equation
+            {"text": "x = y + z", "page": 2, "y": 180.0, "size": 18.0, "bold": False}, # math equation
+        ]
+        filtered = _filter_heading_lines(lines)
+        texts = [l["text"] for l in filtered]
+        assert "1. AI" in texts
+        assert "1.1 UI & UX" in texts
+        assert "2. QA" in texts
+        assert "3. ML" in texts
+        assert "K v r" not in texts
+        assert "x = y + z" not in texts
+
+    def test_identify_body_style_empty_spans(self):
+        from heading_detector import _identify_body_style
+        # Should not crash on empty spans or spans with no text
+        size, is_bold, font = _identify_body_style([])
+        assert size == 10.0
+        assert is_bold is False
+        assert font == ""
+
+        size, is_bold, font = _identify_body_style([{"size": 12, "bold": False, "font": "helv", "text": ""}])
+        assert size == 10.0
+
+
 

@@ -32,28 +32,36 @@ class LanguageManager(QObject):
         
         if lang_code != "en":
             # Load translation file
-            if "__compiled__" in globals():
-                # In Nuitka standalone, translations folder is in the same dir as the executable
-                trans_base_dir = os.path.join(os.path.dirname(sys.executable), "translations")
-            else:
-                # In development, it's one level up from the 'source' directory
-                base_path = os.path.dirname(os.path.abspath(__file__))
-                trans_base_dir = os.path.join(os.path.dirname(base_path), "translations")
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            candidate_dirs = [
+                os.path.join(os.path.dirname(sys.executable), "translations"),
+                os.path.join(getattr(sys, "_MEIPASS", ""), "translations") if hasattr(sys, "_MEIPASS") else None,
+                os.path.join(os.path.dirname(base_path), "translations"),
+                os.path.join(base_path, "translations"),
+            ]
             
-            trans_path = os.path.join(trans_base_dir, f"pdf_merger_{lang_code}.qm")
-            
-            # Check for alternative naming if nb fails
-            if not os.path.exists(trans_path) and lang_code == "nb":
-                trans_path = os.path.join(trans_base_dir, "pdf_merger_nb_NO.qm")
+            trans_path = None
+            for trans_base_dir in candidate_dirs:
+                if not trans_base_dir or not os.path.exists(trans_base_dir):
+                    continue
+                p1 = os.path.join(trans_base_dir, f"pdf_merger_{lang_code}.qm")
+                if os.path.exists(p1):
+                    trans_path = p1
+                    break
+                if lang_code == "nb":
+                    p2 = os.path.join(trans_base_dir, "pdf_merger_nb_NO.qm")
+                    if os.path.exists(p2):
+                        trans_path = p2
+                        break
 
-            if os.path.exists(trans_path):
+            if trans_path and os.path.exists(trans_path):
                 if self.translator.load(trans_path):
                     QCoreApplication.installTranslator(self.translator)
                 else:
                     print(f"Failed to load translation: {trans_path}")
             else:
                 # If file doesn't exist, we just stay in English (or fallback)
-                print(f"Translation file not found: {trans_path}")
+                print(f"Translation file not found for language: {lang_code}")
         
         self.current_lang = lang_code
         self.settings.setValue("language", lang_code)

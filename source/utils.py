@@ -37,12 +37,21 @@ def get_source_asset_path(filename):
     """
     Resolve the path to a file in the source/ directory.
 
-    Handles both Nuitka-compiled executables (where assets sit next to
-    the .exe under source/) and normal development runs (where __file__
-    points at the source directory).
+    Handles Nuitka-compiled executables, PyInstaller bundles,
+    and normal development runs.
     """
-    if "__compiled__" in globals():
-        return os.path.join(os.path.dirname(sys.executable), "source", filename)
+    candidates = [
+        os.path.join(os.path.dirname(sys.executable), "source", filename),
+    ]
+    if hasattr(sys, "_MEIPASS"):
+        candidates.append(os.path.join(sys._MEIPASS, "source", filename))
+        candidates.append(os.path.join(sys._MEIPASS, filename))
+    candidates.append(os.path.join(os.path.dirname(__file__), filename))
+    candidates.append(os.path.join(os.path.dirname(__file__), "source", filename))
+
+    for p in candidates:
+        if p and os.path.exists(p):
+            return p
     return os.path.join(os.path.dirname(__file__), filename)
 
 

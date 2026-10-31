@@ -64,6 +64,7 @@ class AddPDFWorker(QThread):
                 break
             if file_path in self.existing_paths:
                 continue
+            doc = None
             try:
                 file_stats = os.stat(file_path)
                 file_name = os.path.basename(file_path)
@@ -78,6 +79,7 @@ class AddPDFWorker(QThread):
                 from utils import check_fitz_toc_for_first_page, adjust_toc_pages_and_levels, sanitize_dest_dict
                 resolved_toc = adjust_toc_pages_and_levels(raw_toc, 0, doc)
                 doc.close()
+                doc = None
                 
                 # Sanitize TOC immediately to avoid non-serializable objects (fitz.Point)
                 toc = []
@@ -100,6 +102,13 @@ class AddPDFWorker(QThread):
             except Exception as e:
                 print(f"Error loading PDF metadata for {file_path}: {e}")
                 error_count += 1
+            finally:
+                if doc is not None:
+                    try:
+                        if not getattr(doc, "is_closed", True):
+                            doc.close()
+                    except Exception:
+                        pass
         self.load_finished.emit(added_count, error_count)
 
 
@@ -132,6 +141,7 @@ class ThumbnailWorker(QThread):
         self._is_cancelled = True
 
     def run(self):
+        doc = None
         try:
             doc = fitz.open(self.file_path)
             batch = []
@@ -170,9 +180,15 @@ class ThumbnailWorker(QThread):
                     
             if batch:
                 self.thumbnail_ready.emit(self.file_path, -1, batch)
-            doc.close()
         except Exception as e:
             print(f"Error generating thumbnails for {self.file_path}: {e}")
+        finally:
+            if doc is not None:
+                try:
+                    if not getattr(doc, "is_closed", True):
+                        doc.close()
+                except Exception:
+                    pass
 
 
 
@@ -394,7 +410,10 @@ class MainViewModel(QObject):
             
         new_global_toc = []
         for pdf in self.pdf_list_model.pdfs:
-            pdf_bookmarks = [bm for bm in self.global_toc if bm.source_pdf == pdf]
+            pdf_bookmarks = [
+                bm for bm in self.global_toc 
+                if (bm.host_pdf if bm.host_pdf is not None else bm.source_pdf) == pdf
+            ]
             new_global_toc.extend(pdf_bookmarks)
             
         # Add any bookmarks whose PDFs somehow aren't in the list anymore (just in case)
@@ -525,24 +544,19 @@ class MainViewModel(QObject):
     def request_thumbnails(self, file_path: str):
         self._current_preview_file = file_path
         
+        # Stop previous worker if running
+        if self.thumbnail_worker:
+            self._safe_abandon_worker(self.thumbnail_worker)
+            self.thumbnail_worker = None
+
         if file_path is None:
-            if self.thumbnail_worker:
-                self._safe_abandon_worker(self.thumbnail_worker)
-                self.thumbnail_worker = None
             self.thumbnail_started.emit(0)
             return
             
         pdf = next((p for p in self.pdf_list_model.pdfs if p.file_path == file_path), None)
         if not pdf or pdf.missing: 
-            if pdf and pdf.missing:
-                # If it's selected but missing, we should also clear the preview
-                self.thumbnail_started.emit(0)
+            self.thumbnail_started.emit(0)
             return
-
-        # Stop previous worker if running
-        if self.thumbnail_worker:
-            self._safe_abandon_worker(self.thumbnail_worker)
-            self.thumbnail_worker = None
             
         total_pages_to_show = pdf.pages
         self.thumbnail_started.emit(total_pages_to_show)
@@ -980,7 +994,7 @@ class MainViewModel(QObject):
             self.global_toc.insert(insert_idx + i, bm)
 
         self.commit_state(
-            QCoreApplication.translate("MainViewModel", "Generate Bookmarks"),
+            "Generate Bookmarks",
             old_state,
         )
         self.global_toc_changed.emit()

@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence, QFont, QColor, QBrush, QIcon
 
-from model import BookmarkItem
+from model import BookmarkItem, PDFDocument
 from utils import get_source_asset_path
 
 # Cached icons — constructed once on first use
@@ -88,7 +88,7 @@ class BookmarksTreeWidget(QTreeWidget):
             
         # Prevent placing guest bookmarks directly under another PDF container root
         if dragged_item:
-            from model import BookmarkItem, PDFDocument
+            from model import BookmarkItem, PDFDocument, PDFDocument
             indicator = self.dropIndicatorPosition()
             proposed_parent_pdf = None
             
@@ -110,7 +110,7 @@ class BookmarksTreeWidget(QTreeWidget):
                 
             if proposed_parent_pdf is not None:
                 bm = dragged_item.data(0, Qt.ItemDataRole.UserRole)
-                if isinstance(bm, BookmarkItem) and bm.source_pdf.file_path != proposed_parent_pdf.file_path:
+                if isinstance(bm, BookmarkItem) and bm.source_pdf and bm.source_pdf.file_path != proposed_parent_pdf.file_path:
                     event.ignore()
                     return
 
@@ -156,7 +156,7 @@ class BookmarksTreeWidget(QTreeWidget):
             
         if proposed_parent_pdf is not None:
             bm = dragged_item.data(0, Qt.ItemDataRole.UserRole)
-            if isinstance(bm, BookmarkItem) and bm.source_pdf.file_path != proposed_parent_pdf.file_path:
+            if isinstance(bm, BookmarkItem) and bm.source_pdf and bm.source_pdf.file_path != proposed_parent_pdf.file_path:
                 event.ignore()
                 return
 
@@ -352,7 +352,7 @@ class BookmarksPane(QWidget):
                     # Block promoting a guest bookmark if it would become a Level-1 bookmark
                     grandparent = parent.parent()
                     if grandparent.parent() is None:  # grandparent is the PDF root container
-                        from model import BookmarkItem, PDFDocument
+                        from model import BookmarkItem, PDFDocument, PDFDocument
                         bm = it.data(0, Qt.ItemDataRole.UserRole)
                         proposed_pdf = grandparent.data(0, Qt.ItemDataRole.UserRole)
                         if (isinstance(bm, BookmarkItem) and 
@@ -502,7 +502,8 @@ class BookmarksPane(QWidget):
                         root_item = root_item.parent()
                     root_pdf = root_item.data(0, Qt.ItemDataRole.UserRole)
                     
-                    if root_pdf.file_path != bm.source_pdf.file_path:
+                    if (isinstance(root_pdf, PDFDocument) and bm.source_pdf and 
+                            root_pdf.file_path != bm.source_pdf.file_path):
                         italic_font = item.font(0)
                         italic_font.setItalic(True)
                         item.setFont(0, italic_font)
@@ -539,7 +540,8 @@ class BookmarksPane(QWidget):
                 title = item.text(0).strip() or self.tr("Untitled")
                 
                 try:
-                    page = int(item.text(1))
+                    clean_page = item.text(1).replace("→", "").strip()
+                    page = int(clean_page)
                     if page < 1: page = 1
                 except ValueError:
                     page = 1
@@ -566,7 +568,8 @@ class BookmarksPane(QWidget):
                     top_root = top_root.parent()
                 root_pdf = top_root.data(0, Qt.ItemDataRole.UserRole)
                 
-                if bm.source_pdf.file_path != container_pdf.file_path:
+                if (bm.source_pdf and container_pdf and 
+                        bm.source_pdf.file_path != container_pdf.file_path):
                     italic_font = item.font(0)
                     italic_font.setItalic(True)
                     item.setFont(0, italic_font)
@@ -635,7 +638,7 @@ class BookmarksPane(QWidget):
             # Update viewmodel without triggering _populate_tree
             self.vm.global_toc_changed.disconnect(self._populate_tree)
             try:
-                self.vm.update_global_toc(new_toc, self.tr("Edit Bookmarks"), old_state, "BookmarksPane")
+                self.vm.update_global_toc(new_toc, "Edit Bookmarks", old_state, "BookmarksPane")
             finally:
                 self.vm.global_toc_changed.connect(self._populate_tree)
         finally:
@@ -644,7 +647,7 @@ class BookmarksPane(QWidget):
 
     def _get_selected_bookmarks(self):
         """Returns a list of selected QTreeWidgetItem objects that represent actual bookmarks."""
-        from model import BookmarkItem
+        from model import BookmarkItem, PDFDocument
         selected_items = self.tree.selectedItems()
 
         # Filter out items that have no parent (the PDF root containers)
@@ -730,7 +733,7 @@ class BookmarksPane(QWidget):
         return independent_items
 
 
-    def _demote_item(self, item):
+    def _demote_item(self, item, sync=True):
         parent = item.parent()
         if parent:
             index = parent.indexOfChild(item)
@@ -740,7 +743,8 @@ class BookmarksPane(QWidget):
                 prev_sibling.addChild(item)
                 prev_sibling.setExpanded(True)
                 self.tree.setCurrentItem(item)
-                self._sync_to_viewmodel()
+                if sync:
+                    self._sync_to_viewmodel()
 
     def _demote_items(self):
         # 1. Save the selection models
@@ -752,7 +756,7 @@ class BookmarksPane(QWidget):
         try:
             items = self._get_independent_selected_items()
             for item in items:
-                self._demote_item(item)
+                self._demote_item(item, sync=False)
             self._sync_to_viewmodel()
         
             # 2. Restore the selection
@@ -773,7 +777,7 @@ class BookmarksPane(QWidget):
         finally: 
             self.vm.undo_stack.endMacro()
 
-    def _promote_item(self, item):
+    def _promote_item(self, item, sync=True):
         parent = item.parent()
         if not parent or parent.parent() is None:
             return # Already top level bookmark (child of PDF root)
@@ -782,12 +786,12 @@ class BookmarksPane(QWidget):
 
         # Guard: Prevent promoting a guest bookmark if it would become a Level-1 bookmark
         if grandparent.parent() is None: 
-            from model import BookmarkItem, PDFDocument
+            from model import BookmarkItem, PDFDocument, PDFDocument
             bm = item.data(0, Qt.ItemDataRole.UserRole)
             proposed_pdf = grandparent.data(0, Qt.ItemDataRole.UserRole)
             if (isinstance(bm, BookmarkItem) and 
             isinstance(proposed_pdf, PDFDocument) and
-            bm.source_pdf.file_path != proposed_pdf.file_path):
+            bm.source_pdf and bm.source_pdf.file_path != proposed_pdf.file_path):
                 return # block guest bookmark promotion
         
         parent.takeChild(parent.indexOfChild(item))
@@ -796,7 +800,8 @@ class BookmarksPane(QWidget):
         grandparent.insertChild(index + 1, item)
             
         self.tree.setCurrentItem(item)
-        self._sync_to_viewmodel()
+        if sync:
+            self._sync_to_viewmodel()
 
     def _promote_items(self):
         # 1. Save the selection models
@@ -808,7 +813,7 @@ class BookmarksPane(QWidget):
         try:
             items = reversed(self._get_independent_selected_items())
             for item in items:
-                self._promote_item(item)
+                self._promote_item(item, sync=False)
             self._sync_to_viewmodel()
         
             # 2. Restore the selection
@@ -830,7 +835,7 @@ class BookmarksPane(QWidget):
             self.vm.undo_stack.endMacro()
 
 
-    def _move_item_up(self, item):
+    def _move_item_up(self, item, sync=True):
         parent = item.parent()
         if not parent:
             return  # Don't move PDF root containers
@@ -840,9 +845,19 @@ class BookmarksPane(QWidget):
             parent.takeChild(index)
             parent.insertChild(index - 1, item)
             self.tree.setCurrentItem(item)
-            self._sync_to_viewmodel()
+            if sync:
+                self._sync_to_viewmodel()
 
     def _move_items_up(self):
+        items = self._get_independent_selected_items()
+        if not items:
+            return
+        # If any selected item is at the top of its parent, do not move
+        for it in items:
+            parent = it.parent()
+            if not parent or parent.indexOfChild(it) == 0:
+                return
+
         # 1. Save the selection models
         selected_model_ids = {
             id(item.data(0, Qt.ItemDataRole.UserRole)) 
@@ -850,9 +865,8 @@ class BookmarksPane(QWidget):
         }
         self.vm.undo_stack.beginMacro(self.tr("Move Bookmarks Up"))
         try:
-            items = self._get_independent_selected_items()
             for item in items:
-                self._move_item_up(item)
+                self._move_item_up(item, sync=False)
             self._sync_to_viewmodel()
         
             # 2. Restore the selection
@@ -873,7 +887,7 @@ class BookmarksPane(QWidget):
         finally: 
             self.vm.undo_stack.endMacro()
 
-    def _move_item_down(self, item):
+    def _move_item_down(self, item, sync=True):
         parent = item.parent()
         if not parent:
             return  # Don't move PDF root containers
@@ -883,9 +897,19 @@ class BookmarksPane(QWidget):
             parent.takeChild(index)
             parent.insertChild(index + 1, item)
             self.tree.setCurrentItem(item)
-            self._sync_to_viewmodel()
+            if sync:
+                self._sync_to_viewmodel()
 
     def _move_items_down(self):
+        items = list(reversed(self._get_independent_selected_items()))
+        if not items:
+            return
+        # If any selected item is at the bottom of its parent, do not move
+        for it in items:
+            parent = it.parent()
+            if not parent or parent.indexOfChild(it) == parent.childCount() - 1:
+                return
+
         # 1. Save the selection models
         selected_model_ids = {
             id(item.data(0, Qt.ItemDataRole.UserRole)) 
@@ -893,9 +917,8 @@ class BookmarksPane(QWidget):
         }
         self.vm.undo_stack.beginMacro(self.tr("Move Bookmarks Down"))
         try:
-            items = reversed(self._get_independent_selected_items())
             for item in items:
-                self._move_item_down(item)
+                self._move_item_down(item, sync=False)
             self._sync_to_viewmodel()
         
             # 2. Restore the selection
