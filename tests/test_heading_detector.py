@@ -1044,5 +1044,136 @@ class TestEnhancedHeuristics:
         size, is_bold, font = _identify_body_style([{"size": 12, "bold": False, "font": "helv", "text": ""}])
         assert size == 10.0
 
+    def test_find_toc_pages_keywordless_structural(self, mocker):
+        """Verify that _find_toc_pages detects TOC pages structurally even without keywords."""
+        from heading_detector import _find_toc_pages
+        mock_doc = mocker.MagicMock()
+        mock_doc.page_count = 3
+
+        # Page 1 has title info (no keyword)
+        mock_page_1 = mocker.MagicMock()
+        mock_page_1.get_text.return_value = "Technical Report\nAuthor Name\n2026"
+
+        # Page 2 has TOC lines but NO keyword like "Contents"
+        mock_page_2 = mocker.MagicMock()
+        mock_page_2.get_text.return_value = "1. First Section\n2. Second Section\n3. Third Section\n4. Fourth Section\n5. Fifth Section"
+
+        # Page 3 has body text
+        mock_page_3 = mocker.MagicMock()
+        mock_page_3.get_text.return_value = "Body text of page 3..."
+
+        pages_dict = {0: mock_page_1, 1: mock_page_2, 2: mock_page_3}
+        mock_doc.load_page.side_effect = lambda idx: pages_dict.get(idx, mock_page_3)
+
+        # Patch _extract_toc_entries so page 2 produces 5 structural entries with page_str
+        def mock_extract(doc, pages):
+            if pages == [2]:
+                return [
+                    {"prefix": f"{i}", "title": f"Section {i}", "page_str": f"{i}", "x0": 50.0}
+                    for i in range(1, 6)
+                ]
+            return []
+
+        mocker.patch("heading_detector._extract_toc_entries", side_effect=mock_extract)
+
+        pages = _find_toc_pages(mock_doc)
+        assert pages == [2]
+
+    def test_extract_toc_entries_visual_y_band_ordering(self, mocker):
+        """Verify that spans on the same line with y-jitter sort left-to-right (title before page)."""
+        from heading_detector import _extract_toc_entries
+        mock_doc = mocker.MagicMock()
+        mock_page = mocker.MagicMock()
+        # Page number on the right has smaller y (299.8) than title on the left (300.3)
+        mock_page.get_text.return_value = {
+            "blocks": [
+                {
+                    "type": 0,
+                    "lines": [
+                        {
+                            "bbox": (50.0, 299.8, 500.0, 310.0),
+                            "spans": [
+                                {"text": "Introduction", "bbox": (50.0, 300.3, 150.0, 310.0), "origin": (50.0, 309.0)},
+                                {"text": "1", "bbox": (480.0, 299.8, 490.0, 310.0), "origin": (480.0, 308.5)},
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        mock_doc.load_page.return_value = mock_page
+
+        entries = _extract_toc_entries(mock_doc, [1])
+        assert len(entries) == 1
+        assert entries[0]["title"] == "Introduction"
+        assert entries[0]["page_str"] == "1"
+
+    def test_extract_toc_entries_multiline_lookahead(self, mocker):
+        """Verify that multi-line entries (chapter header + title + page) merge properly."""
+        from heading_detector import _extract_toc_entries
+        mock_doc = mocker.MagicMock()
+        mock_page = mocker.MagicMock()
+        mock_page.get_text.return_value = {
+            "blocks": [
+                {
+                    "type": 0,
+                    "lines": [
+                        {
+                            "bbox": (50.0, 100.0, 400.0, 115.0),
+                            "spans": [{"text": "CHAPTER ONE---------------------", "bbox": (50.0, 100.0, 400.0, 115.0)}]
+                        },
+                        {
+                            "bbox": (50.0, 120.0, 500.0, 135.0),
+                            "spans": [{"text": "An Introduction to Finite Element Procedures 1", "bbox": (50.0, 120.0, 500.0, 135.0)}]
+                        }
+                    ]
+                }
+            ]
+        }
+        mock_doc.load_page.return_value = mock_page
+
+        entries = _extract_toc_entries(mock_doc, [1])
+        assert len(entries) == 1
+        assert "CHAPTER ONE" in entries[0]["title"]
+        assert "An Introduction" in entries[0]["title"]
+        assert entries[0]["page_str"] == "1"
+        assert entries[0]["level"] == 1
+
+    def test_determine_page_offset_and_headings_build(self):
+        """Verify page offset calculation and TOC heading construction."""
+        from heading_detector import _determine_page_offset, _build_headings_from_toc
+        import fitz
+
+        # Create a small in-memory PDF
+        doc = fitz.open()
+        # Page 1: Cover
+        doc.new_page().insert_text((50, 100), "Cover Page")
+        # Page 2: TOC
+        doc.new_page().insert_text((50, 100), "Contents\n1. Overview ... 1\n2. Implementation ... 2")
+        # Page 3: Blank
+        doc.new_page().insert_text((50, 100), "Blank")
+        # Page 4: Content for printed page 1
+        doc.new_page().insert_text((50, 100), "1. Overview\nThis is the content.")
+        # Page 5: Content for printed page 2
+        doc.new_page().insert_text((50, 100), "2. Implementation\nDetails here.")
+
+        entries = [
+            {"prefix": "1.", "title": "Overview", "page_str": "1", "level": 1, "x0": 50.0},
+            {"prefix": "2.", "title": "Implementation", "page_str": "2", "level": 1, "x0": 50.0},
+        ]
+
+        offset = _determine_page_offset(doc, [2], entries)
+        # Printed page 1 is on physical page 4 -> offset is 3
+        assert offset == 3
+
+        headings = _build_headings_from_toc(doc, [2], entries, offset)
+        assert len(headings) == 2
+        assert headings[0]["title"] == "1. Overview"
+        assert headings[0]["page"] == 4
+        assert headings[1]["title"] == "2. Implementation"
+        assert headings[1]["page"] == 5
+        doc.close()
+
+
 
 

@@ -98,41 +98,67 @@ def get_numbering_level(text: str) -> Optional[int]:
     return len(parts)
 
 
+TOC_KEYWORD_RE = re.compile(
+    r'\b(?:table\s+of\s+contents|contents|brief\s+contents|detailed\s+contents|'
+    r'indhold|innhold|innholdsfortegnelse|indholdsfortegnelse|inneh[åa]ll|inneh[åa]llsf[öo]rteckning|'
+    r'inhaltsverzeichnis|inhalt|table\s+des\s+mati[èe]res|sommaire|'
+    r'[ií]ndice(?:\s+general)?|tabla\s+de\s+contenido|sommario|'
+    r'spis\s+tre[śs]ci|inhoudsopgave|sis[äa]llysluettelo)\b',
+    re.IGNORECASE
+)
+
+
+def _is_running_toc_header(text: str) -> bool:
+    t = text.strip()
+    cleaned = re.sub(r'^(?:[ivxlcdm]+|\d+)[\s\.\-–—]+|[\s\.\-–—]+(?:[ivxlcdm]+|\d+)$', '', t, flags=re.IGNORECASE).strip()
+    return bool(TOC_KEYWORD_RE.search(cleaned)) or cleaned.lower() in [
+        'contents', 'table of contents', 'indhold', 'innhold', 'innholdsfortegnelse', 'indholdsfortegnelse', 'inhalt'
+    ]
+
+
 def _find_toc_pages(doc) -> List[int]:
     """Find the 1-based page numbers that contain the Table of Contents."""
-    toc_keywords = {
-        "contents", "table of contents", "indhold", "innhold", "innholdsfortegnelse", "indholdsfortegnelse",
-        "inhaltsverzeichnis", "inhalt", "table des matières", "sommaire", "índice", "indice", "tabla de contenido", "sommario"
-    }
     toc_pages = []
-    
+    max_search = min(50, doc.page_count)
     first_toc_page = None
-    for page_idx in range(min(15, doc.page_count)):
+
+    # Pass 1: Keyword-guided search in front matter
+    for page_idx in range(max_search):
         page = doc.load_page(page_idx)
-        text = page.get_text().lower()
-        for line in text.split('\n'):
-            if line.strip() in toc_keywords:
+        raw_text = page.get_text()
+        first_lines = [l.strip() for l in raw_text.split('\n') if l.strip()][:6]
+        if any(TOC_KEYWORD_RE.search(l) for l in first_lines):
+            first_toc_page = page_idx + 1
+            toc_pages.append(first_toc_page)
+            break
+
+    # Pass 2: Structural fallback when no keyword is found anywhere
+    if first_toc_page is None:
+        for page_idx in range(max_search):
+            page = doc.load_page(page_idx)
+            lines = [l.strip() for l in page.get_text().split('\n') if l.strip()]
+            if len(lines) < 5:
+                continue
+            entries = _extract_toc_entries(doc, [page_idx + 1])
+            if len(entries) >= 5 and len(entries) >= len(lines) * 0.20:
                 first_toc_page = page_idx + 1
                 toc_pages.append(first_toc_page)
                 break
-        if first_toc_page is not None:
-            break
-            
+
     # Check subsequent pages for continuation
     if first_toc_page is not None:
         curr_page = first_toc_page + 1
-        while curr_page <= min(15, doc.page_count):
+        while curr_page <= min(max_search + 15, doc.page_count):
             entries = _extract_toc_entries(doc, [curr_page])
             p = doc.load_page(curr_page - 1)
-            p_lines = p.get_text().strip().split('\n')
-            total_lines_on_page = len([l for l in p_lines if l.strip()])
-            
-            if len(entries) >= 3 and (total_lines_on_page == 0 or len(entries) >= total_lines_on_page * 0.25):
+            p_lines = [l.strip() for l in p.get_text().split('\n') if l.strip()]
+            total_lines = len(p_lines)
+            if len(entries) >= 3 and (total_lines == 0 or len(entries) >= total_lines * 0.20):
                 toc_pages.append(curr_page)
                 curr_page += 1
             else:
                 break
-                
+
     return toc_pages
 
 
@@ -151,10 +177,18 @@ def _extract_toc_entries(doc, toc_pages: List[int]) -> List[Dict]:
     entries = []
     page_pattern_str = r'(?:[A-Za-z0-9]+[\-–][0-9]+|[0-9]+|[ivxlcdmIVXLCDM]+)'
     page_num_pattern = re.compile(f'^{page_pattern_str}$')
-    
-    # Division pattern (e.g. "Chapter 1")
+    toc_pg_re = re.compile(
+        r'(?:'
+        r'(?:\s*\.\s*){2,}'       # dot leader
+        r'|\s*,\s*'               # comma
+        r'|\s{2,}'                # two or more spaces
+        r'|\s+'                   # single space before number
+        r')'
+        r'(' + page_pattern_str + r')\s*$',
+        re.IGNORECASE
+    )
     division_pattern = re.compile(r'^' + DIVISION_WORDS + r'\s+\d+', re.IGNORECASE)
-    
+
     for page_num in toc_pages:
         page = doc.load_page(page_num - 1)
         raw_dict = page.get_text("dict")
@@ -167,134 +201,144 @@ def _extract_toc_entries(doc, toc_pages: List[int]) -> List[Dict]:
             for line in block.get("lines", []):
                 line_y = line.get("bbox", [0, 0, 0, 0])[1]
                 for span in line.get("spans", []):
-                    if "origin" in span:
-                        y_pos = span["origin"][1]
-                    elif "bbox" in span:
-                        y_pos = span["bbox"][1]
-                    else:
+                    bbox = span.get("bbox", line.get("bbox", [0, 0, 0, 0]))
+                    y_pos = span.get("origin", [0, 0])[1] if "origin" in span else bbox[1]
+                    if not y_pos:
                         y_pos = line_y
-                        
-                    clean_text = _clean_ligatures(span["text"])
+                    clean_text = _clean_ligatures(span.get("text", ""))
                     spans.append({
                         "text": clean_text,
-                        "x0": span.get("bbox", [0, 0, 0, 0])[0],
-                        "x1": span.get("bbox", [0, 0, 0, 0])[2],
+                        "x0": bbox[0],
+                        "x1": bbox[2],
                         "y": y_pos,
                     })
 
-        # Sort spans by y-coordinate first, then by x0
-        spans.sort(key=lambda s: (s["y"], s["x0"]))
+        # Group spans by vertical y-band (tolerance 3.0), then sort each line by x0 left-to-right
+        spans.sort(key=lambda s: s["y"])
+        line_groups = []
+        for s in spans:
+            placed = False
+            for group in line_groups:
+                avg_y = sum(item["y"] for item in group) / len(group)
+                if abs(s["y"] - avg_y) <= 3.0:
+                    group.append(s)
+                    placed = True
+                    break
+            if not placed:
+                line_groups.append([s])
 
-        # Merge spans on the same line (y difference <= 2.0)
+        line_groups.sort(key=lambda g: sum(item["y"] for item in g) / len(g))
+
         lines = []
-        if spans:
-            current = {
-                "text": spans[0]["text"],
-                "y": spans[0]["y"],
-                "x0": spans[0]["x0"],
-                "x1": spans[0]["x1"]
-            }
-            for s in spans[1:]:
-                if abs(s["y"] - current["y"]) <= 2.0:
-                    gap = s["x0"] - current["x1"]
-                    if gap > 2.0 and not current["text"].endswith(" ") and not s["text"].startswith(" "):
-                        current["text"] += " " + s["text"]
-                    else:
-                        current["text"] += s["text"]
-                    current["x1"] = max(current["x1"], s["x1"])
+        for g in line_groups:
+            g.sort(key=lambda s: s["x0"])
+            merged_text = g[0]["text"]
+            curr_x1 = g[0]["x1"]
+            for s in g[1:]:
+                gap = s["x0"] - curr_x1
+                if gap > 2.0 and not merged_text.endswith(" ") and not s["text"].startswith(" "):
+                    merged_text += " " + s["text"]
                 else:
-                    current["text"] = current["text"].strip()
-                    if current["text"]:
-                        lines.append(current)
-                    current = {
-                        "text": s["text"],
-                        "y": s["y"],
-                        "x0": s["x0"],
-                        "x1": s["x1"]
-                    }
-            current["text"] = current["text"].strip()
-            if current["text"]:
-                lines.append(current)
-                
+                    merged_text += s["text"]
+                curr_x1 = max(curr_x1, s["x1"])
+            merged_text = merged_text.strip()
+            if merged_text:
+                lines.append({"text": merged_text, "x0": g[0]["x0"], "y": g[0]["y"]})
+
         i = 0
         while i < len(lines):
             line_data = lines[i]
             token = line_data["text"]
             x0 = line_data["x0"]
-            
-            if not token:
+
+            if not token or _is_running_toc_header(token):
                 i += 1
                 continue
-                
-            if token.lower() in ["contents", "table of contents", "bridge design manual - lrfd"]:
-                i += 1
-                continue
-            
-            # Single line check
-            single_match = re.match(r'^(?:([A-Za-z0-9\.]+)\s+)?(.*?)(?:\s*\.{2,}\s*|\s+)(' + page_pattern_str + r')$', token)
-            if single_match:
-                pref_candidate, title_candidate, pg_str = single_match.groups()
+
+            # Normalize spaced numbers like '2. 7' -> '2.7', '3 .1' -> '3.1'
+            token = re.sub(r'(\d+)\s*\.\s*(\d+)', r'\1.\2', token)
+            token = re.sub(r'^(CHAPTER|SECTION)\s*([A-Z0-9]+)', r'\1 \2', token, flags=re.IGNORECASE)
+            token = re.sub(r'[\-~_=–—\.]{3,}\s*$', '', token).strip()
+
+            # Fix common OCR leading substitution like 'J 2.2.2' -> '12.2.2'
+            token = re.sub(r'^[JIjl]\s*(\d+\.\d+)', r'1\1', token)
+
+            # Match trailing page number on single line
+            m = toc_pg_re.search(token)
+            if m:
+                pg_str = m.group(1)
+                raw_title = token[:m.start()].strip()
+                raw_title = re.sub(r'[\s\.,\-–—]+$', '', raw_title).strip()
+
                 pref = None
-                title = title_candidate
-                if pref_candidate:
-                    if _get_numbering_prefix(pref_candidate) is not None or pref_candidate.replace('.', '').isdigit():
-                        pref = pref_candidate
-                    else:
-                        title = pref_candidate + " " + title_candidate
-                        
+                pref_m = re.match(r'^([A-Za-z0-9\.]+)\s+(.*)$', raw_title)
+                if pref_m and (_get_numbering_prefix(pref_m.group(1)) is not None or pref_m.group(1).replace('.', '').isdigit()):
+                    pref = pref_m.group(1)
+                    title = pref_m.group(2)
+                else:
+                    title = raw_title
+
                 title = _clean_toc_title(title)
-                entries.append({
-                    "prefix": pref,
-                    "title": title,
-                    "page_str": pg_str,
-                    "x0": x0
-                })
-                i += 1
-                continue
-            
-            # Triple check
-            if i + 2 < len(lines):
-                prefix_candidate = lines[i]["text"]
-                title_candidate = lines[i+1]["text"]
-                page_candidate = lines[i+2]["text"]
-                
-                is_pref = _get_numbering_prefix(prefix_candidate) is not None or prefix_candidate.replace('.', '').isdigit()
-                is_page = page_num_pattern.match(page_candidate) is not None
-                
-                if is_pref and is_page and not page_num_pattern.match(title_candidate):
-                    entries.append({
-                        "prefix": prefix_candidate,
-                        "title": _clean_toc_title(title_candidate),
-                        "page_str": page_candidate,
-                        "x0": lines[i+1]["x0"]
-                    })
-                    i += 3
-                    continue
-            
-            # Pair check
-            if i + 1 < len(lines):
-                title_candidate = lines[i]["text"]
-                page_candidate = lines[i+1]["text"]
-                
-                is_page = page_num_pattern.match(page_candidate) is not None
-                
-                if is_page and not page_num_pattern.match(title_candidate):
-                    pref = None
-                    title_clean = title_candidate
-                    pref_match = re.match(r'^([A-Za-z0-9\.]+)\s+', title_clean)
-                    if pref_match and _get_numbering_prefix(pref_match.group(1)) is not None:
-                        pref = pref_match.group(1)
-                        title_clean = title_clean[len(pref):].strip()
+                if len(title) >= 2:
                     entries.append({
                         "prefix": pref,
-                        "title": _clean_toc_title(title_clean),
-                        "page_str": page_candidate,
-                        "x0": lines[i]["x0"]
+                        "title": title,
+                        "page_str": pg_str,
+                        "x0": x0
                     })
-                    i += 2
+                i += 1
+                continue
+
+            # Multi-line lookahead: current line is title or chapter banner, next line(s) have page number
+            combined_text = token
+            j = i + 1
+            matched_combined = None
+            while j < min(i + 4, len(lines)):
+                next_t = lines[j]["text"]
+                if _is_running_toc_header(next_t):
+                    j += 1
                     continue
-            
-            # Check for chapter-like lines without a page number
+                next_t = re.sub(r'(\d+)\s*\.\s*(\d+)', r'\1.\2', next_t)
+                next_t = re.sub(r'[\-~_=–—\.]{3,}\s*$', '', next_t).strip()
+
+                # If next line looks like a completely new chapter or section starting, stop lookahead
+                if re.match(r'^(CHAPTER|SECTION|\d+\.\d+)', next_t, re.IGNORECASE):
+                    break
+
+                combined_text += " " + next_t
+                m_comb = toc_pg_re.search(combined_text)
+                if m_comb:
+                    matched_combined = (combined_text, m_comb, j)
+                    break
+                j += 1
+
+            if matched_combined:
+                comb_str, m_comb, end_idx = matched_combined
+                pg_str = m_comb.group(1)
+                raw_title = comb_str[:m_comb.start()].strip()
+                raw_title = re.sub(r'[\s\.,\-–—]+$', '', raw_title).strip()
+                raw_title = re.sub(r'^(CHAPTER\s+[A-Za-z0-9]+)\s+', r'\1: ', raw_title, flags=re.IGNORECASE)
+
+                pref = None
+                pref_m = re.match(r'^([A-Za-z0-9\.]+)\s+(.*)$', raw_title)
+                if pref_m and (_get_numbering_prefix(pref_m.group(1)) is not None or pref_m.group(1).replace('.', '').isdigit()):
+                    pref = pref_m.group(1)
+                    title = pref_m.group(2)
+                else:
+                    title = raw_title
+
+                title = _clean_toc_title(title)
+                if len(title) >= 2:
+                    entries.append({
+                        "prefix": pref,
+                        "title": title,
+                        "page_str": pg_str,
+                        "x0": x0
+                    })
+                i = end_idx + 1
+                continue
+
+            # Chapter/division line or section without a page number
             if division_pattern.match(token) or token.strip().lower().startswith("chapter"):
                 pref = None
                 title_clean = token
@@ -302,7 +346,7 @@ def _extract_toc_entries(doc, toc_pages: List[int]) -> List[Dict]:
                 if pref_match and _get_numbering_prefix(pref_match.group(1)) is not None:
                     pref = pref_match.group(1)
                     title_clean = title_clean[len(pref):].strip()
-                
+
                 entries.append({
                     "prefix": pref,
                     "title": _clean_toc_title(title_clean),
@@ -311,10 +355,10 @@ def _extract_toc_entries(doc, toc_pages: List[int]) -> List[Dict]:
                 })
                 i += 1
                 continue
-            
+
             i += 1
 
-    # Group X0 positions to determine levels
+    # Level assignment
     if entries:
         x0_values = sorted(list(set(round(e["x0"], 1) for e in entries)))
         grouped_x0 = []
@@ -327,16 +371,28 @@ def _extract_toc_entries(doc, toc_pages: List[int]) -> List[Dict]:
                     break
             if not found:
                 grouped_x0.append([x])
-                
+
         x0_to_level = {}
         for idx, group in enumerate(grouped_x0):
             level = idx + 1
             for val in group:
                 x0_to_level[val] = level
-                
+
         for e in entries:
-            e["level"] = x0_to_level[round(e["x0"], 1)]
-            
+            t = e["title"]
+            if re.match(r'^(CHAPTER|PART)\b', t, re.IGNORECASE):
+                e["level"] = 1
+            elif e["prefix"]:
+                dots = e["prefix"].count('.')
+                e["level"] = min(6, dots + 1)
+            elif t.lower() in [
+                'preface', 'forord', 'foreword', 'contents', 'indhold', 'innhold',
+                'index', 'references', 'bibliography', 'appendix'
+            ]:
+                e["level"] = 1
+            else:
+                e["level"] = x0_to_level.get(round(e["x0"], 1), 2)
+
     return entries
 
 
@@ -411,17 +467,109 @@ def _filter_headings_with_toc(headings: List[Dict], toc_entries: List[Dict]) -> 
             
         title_lower = title.lower()
         has_page_num = re.search(r'(^\d+\s+|\s+\d+$)', title)
-        if not has_page_num and any(word in title_lower for word in SPECIAL_UNNUMBERED):
-            # Try to assign level from corresponding entry in TOC if possible
-            for norm, entries in toc_by_norm_title.items():
-                if norm_h in norm or norm in norm_h:
-                    if "level" in entries[0]:
-                        h["level"] = entries[0]["level"]
+        if not has_page_num and len(title) <= 60:
+            for word in SPECIAL_UNNUMBERED:
+                if re.search(r'\b' + re.escape(word) + r'\b', title_lower):
+                    # Try to assign level from corresponding entry in TOC if possible
+                    for norm, entries in toc_by_norm_title.items():
+                        if norm_h in norm or norm in norm_h:
+                            if "level" in entries[0]:
+                                h["level"] = entries[0]["level"]
+                            break
+                    filtered.append(h)
                     break
-            filtered.append(h)
-            continue
             
     return filtered
+
+
+def _determine_page_offset(doc, toc_pages: List[int], entries: List[Dict]) -> Optional[int]:
+    """Determine the offset between printed TOC page numbers and physical PDF page numbers."""
+    if not toc_pages or not entries:
+        return None
+    last_toc_page = max(toc_pages)
+    numeric_entries = [e for e in entries if e.get("page_str") and e["page_str"].isdigit() and int(e["page_str"]) >= 1]
+    if len(numeric_entries) < 2:
+        return None
+
+    candidate_offsets = {}
+    tested = 0
+    for e in numeric_entries:
+        if tested >= 15:
+            break
+        target_page = int(e["page_str"])
+        tokens = []
+        if e.get("prefix"):
+            tokens.append(e["prefix"])
+        words = [w for w in re.split(r'\W+', e["title"]) if len(w) >= 3]
+        if words:
+            tokens.append(words[0].lower())
+            if len(words) > 1:
+                tokens.append(words[1].lower())
+
+        if not tokens:
+            continue
+        tested += 1
+
+        search_start = last_toc_page
+        search_end = min(doc.page_count, last_toc_page + max(target_page + 30, 80))
+
+        for pno in range(search_start, search_end):
+            text = _clean_ligatures(doc[pno].get_text()).lower()
+            if all(t.lower() in text for t in tokens):
+                diff = (pno + 1) - target_page
+                if diff >= 0:
+                    candidate_offsets[diff] = candidate_offsets.get(diff, 0) + 1
+                    break
+
+    if candidate_offsets:
+        best_offset = max(candidate_offsets, key=candidate_offsets.get)
+        if candidate_offsets[best_offset] >= 2 or (len(numeric_entries) <= 3 and candidate_offsets[best_offset] >= 1):
+            return best_offset
+    return None
+
+
+def _build_headings_from_toc(doc, toc_pages: List[int], entries: List[Dict], offset: int) -> List[Dict]:
+    """Construct final heading bookmarks directly from parsed TOC entries using page offset."""
+    headings = []
+    first_toc = toc_pages[0]
+    last_toc = max(toc_pages)
+
+    toc_pages_set = set(toc_pages)
+    front_matter_pages = {}
+    for pno in range(0, min(last_toc + offset + 5, doc.page_count)):
+        if (pno + 1) not in toc_pages_set:
+            p_text = _clean_ligatures(doc[pno].get_text()).lower()
+            front_matter_pages[pno + 1] = p_text
+
+    for e in entries:
+        title = e["title"]
+        if e.get("prefix") and not title.startswith(e["prefix"]):
+            title = f"{e['prefix']} {title}"
+
+        lvl = e.get("level", 1)
+
+        pg_str = e.get("page_str")
+        target_page = None
+        if pg_str and pg_str.isdigit():
+            target_page = int(pg_str) + offset
+        elif pg_str:
+            t_words = [w.lower() for w in re.split(r'\W+', e["title"]) if len(w) >= 3]
+            for p_num, p_text in front_matter_pages.items():
+                if t_words and all(w in p_text for w in t_words[:2]):
+                    target_page = p_num
+                    break
+            if target_page is None:
+                target_page = first_toc
+        else:
+            target_page = first_toc
+
+        target_page = max(1, min(doc.page_count, target_page))
+        headings.append({
+            "title": title,
+            "page": target_page,
+            "level": lvl
+        })
+    return headings
 
 
 def detect_headings(pdf_path: str, max_levels: int = 6) -> List[Dict]:
@@ -429,19 +577,18 @@ def detect_headings(pdf_path: str, max_levels: int = 6) -> List[Dict]:
     Scan a PDF and infer headings using a two-phase approach.
 
     Algorithm:
-        1. Parse the Table of Contents (TOC) if present.
-        2. Extract every text span with (font_size, is_bold, text, page, y_pos).
-        3. Identify the "body" font size as the size carrying the most characters.
-        4. Keep spans matching candidate heading styles (larger or bold body size).
-        5. Remove repeated headers/footers.
-        6. Merge adjacent same-style spans on the same line.
-        7. Filter out short or purely numeric lines (page numbers).
-        8. Filter candidates against the parsed TOC.
+        1. Parse the Table of Contents (TOC) if present and determine page offset.
+        2. If TOC entries map directly to document pages, generate bookmarks directly.
+        3. Otherwise, extract text spans and infer headings by font statistics and TOC cross-referencing.
     """
     doc = fitz.open(pdf_path)
     try:
         toc_pages = _find_toc_pages(doc)
         toc_entries = _extract_toc_entries(doc, toc_pages) if toc_pages else []
+        offset = _determine_page_offset(doc, toc_pages, toc_entries)
+        if offset is not None and len(toc_entries) >= 5:
+            headings = _build_headings_from_toc(doc, toc_pages, toc_entries, offset)
+            return headings
         spans = _extract_spans(doc)
         page_count = doc.page_count
     finally:
